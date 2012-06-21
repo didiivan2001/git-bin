@@ -20,6 +20,7 @@ function addbin {
             return
         elif [[ -e $BINSTORE/$hash && -h $src ]]; then
             echo "git-bin-add: nothing to do, $src is already in the binstore"
+            #TODO: symlink it anyways. There might be multiple 'copies' of the same file in a git repo.
             return
         fi
 
