@@ -1,5 +1,6 @@
 remotename=`git remote -v | grep -E "origin.*push" | grep -oE ":([^ ]+)" | grep -oE "[^:]+"`
 BINSTORE=$(dirname /media/lab/gitserve/gitbin-store/$remotename/blah) #using dirname with a fake file to clean up double slashes etc.
+BINSTORE=~/tmp/gitbin/binstore
 
 function addbin {
     [[ -d $BINSTORE ]] || mkdir -p $BINSTORE
@@ -7,6 +8,13 @@ function addbin {
     while [[ "x$1" != "x" ]];
     do
         src=$1 ; shift
+        if [[ -d $src ]]; 
+        then
+            echo "git-bin-add: descending into $src for recursive add."
+            addbin $src/*
+            continue
+        fi
+
         hash=`md5sum $src | cut -d" " -f1`
         # check whether the file is already a symlink to its hash in the binstore
         # i.e. there is nothing to reset
@@ -41,6 +49,12 @@ function editbin {
     while [[ "x$1" != "x" ]];
     do
         src=$1 ; shift
+        if [[ -d $src ]]; 
+        then
+            #editbin $src/*
+            echo "git-bin-edit: recursive edits are disabled for your safety and sanity. Not descending into $src"
+            continue
+        fi
         storefile=`readlink $src`
         [[ $? == 1 || "$(dirname $storefile)" != "$BINSTORE" ]] && continue #not a symlink
         tmpfile=.tmp_$(basename $storefile)
@@ -59,36 +73,64 @@ function resetbin {
     while [[ "x$1" != "x" ]];
     do
         src=$1 ; shift
+        if [[ -d $src ]]; 
+        then
+            #resetbin $src/*
+            echo "git-bin-reset: recursive resets are disabled for your safety and sanity. Not descending into $src"
+            continue
+        fi
         hash=`md5sum $src | cut -d" " -f1`
      
-        # check whether the file is already a symlink to its hash in the binstore
-        # i.e. there is nothing to reset
-        [[ -L $src && "`readlink $src`" == "$BINSTORE/$hash" ]] && continue 
+        gitstatus="`git status --porcelain $src |cut -c -2 | sed -e 's/ //g'`"
+        case $gitstatus in
+            "A")
+                # newly added file, not yet committed. need to copy the actual contents back and do a git reset HEAD
+                # the file will be a symlink to it's contents.
 
-        if [[ ! -e $BINSTORE/$hash ]];
-        then
-            # The hash is not in the binstore. this could be because the file was never tracked by
-            # git-bin, or because the file content has changed (following a git-bin-edit).
-            # We test to see if the file was in git-bin by seeing if git-status lists it as having
-            # had a type change (i.e. going from a symlink to a regular file). This will be the
-            # status even if the file has also had its contents changed. If this is not the case,
-            # we should just ignore the file as it's probably not a git-bin file.
-            git status $src | grep -E "typechange: $src\$" 2>&1 >/dev/null || continue
-            
-            #otherwise, the file has changed, so we should back it up!
-            echo "git-bin-reset: $src has changed, saving a copy to /tmp/$src.$hash"
-            cp -f $src /tmp/$src.$hash
-        else
-            # The has is in the binstore. We need to check for signature conflicts:
-            if [[ `stat -c%s $BINSTORE/$hash` != `stat -c%s $src` ]]; then
-                echo "git-bin-reset: SIGNATURE CONFLICT in $src!"
-                echo "git-bin-reset: $src in store has size `stat -c%s $BINSTORE/$hash`, and your file has size `stat -c%s $src`"
-                return
-            fi
-        fi
-        # now we can just restore the file using git.
-        echo "git-bin-reset: restoring $src to the git HEAD"
-        rm -f $src && git checkout -- $src
+                # check whether the file is already a symlink to its hash in the binstore
+                [[ -L $src && "`readlink $src`" == "$BINSTORE/$hash" ]] || (echo "git-bin-reset: something is horribly wrong with $src. It should be a symlink to it's contents, but isn't" && return)
+
+                symtarget=`readlink $src`
+                echo "git-bin-reset: unstaging $src"
+                rm -f $src && cp -f $symtarget $src && git reset HEAD $src
+                ;;
+            "T")
+                # editted file (type changed from symlink to real file). need to do git checkout -- 
+                # the file is not a symlink to it's contents.
+                # check whether the file is already a symlink to its hash in the binstore
+                # i.e. there is nothing to reset
+                [[ -L $src && "`readlink $src`" == "$BINSTORE/$hash" ]] && continue 
+
+                if [[ ! -e $BINSTORE/$hash ]];
+                then
+                    # The hash is not in the binstore. this could be because the file was never tracked by
+                    # git-bin, or because the file content has changed (following a git-bin-edit).
+                    # We test to see if the file was in git-bin by seeing if git-status lists it as having
+                    # had a type change (i.e. going from a symlink to a regular file). This will be the
+                    # status even if the file has also had its contents changed. If this is not the case,
+                    # we should just ignore the file as it's probably not a git-bin file.
+                    git status $src | grep -E "typechange: $src\$" 2>&1 >/dev/null || continue
+                    
+                    #otherwise, the file has changed, so we should back it up!
+                    echo "git-bin-reset: $src has changed, saving a copy to /tmp/$src.$hash"
+                    cp -f $src /tmp/$src.$hash
+                else
+                    # The has is in the binstore. We need to check for signature conflicts:
+                    if [[ `stat -c%s $BINSTORE/$hash` != `stat -c%s $src` ]]; then
+                        echo "git-bin-reset: SIGNATURE CONFLICT in $src!"
+                        echo "git-bin-reset: $src in store has size `stat -c%s $BINSTORE/$hash`, and your file has size `stat -c%s $src`"
+                        return
+                    fi
+                fi
+                # now we can just restore the file using git.
+                echo "git-bin-reset: restoring $src to the git HEAD"
+                # we need a to checkout from head:
+                rm -f $src && git checkout -- $src
+                ;;
+            *)
+                echo "unkown git status for file $gitstatus $src"
+                ;;
+        esac
     done
 }
 
