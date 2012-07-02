@@ -10,7 +10,7 @@ function addbin {
         if [[ -d $src ]]; 
         then
             echo "git-bin-add: descending into $src for recursive add."
-            addbin $src/*
+            addbin `find $src -maxdepth 1 -printf "'%f' "`
             continue
         fi
 
@@ -71,7 +71,7 @@ function resetbin {
 
     while [[ "x$1" != "x" ]];
     do
-        src=$1 ; shift
+        src="$1" ; shift
         if [[ -d $src ]]; 
         then
             #resetbin $src/*
