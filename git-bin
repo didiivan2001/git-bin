@@ -1,4 +1,4 @@
-remotename=`git remote -v | grep -E "origin.*push" | grep -oE "@([^ ]+)" | grep -oE ":[^ ]+" | cut -c 2-`
+remotename=`git remote -v | grep -E "origin.*push" | grep -oE "@([^ ]+)" | grep -oE "[:/][^ ]+" | cut -c 2-`
 BINSTORE=$(dirname /media/lab/gitserve/gitbin-store/$remotename/blah) #using dirname with a fake file to clean up double slashes etc.
 
 function addbin {
