@@ -25,9 +25,12 @@ function addbin {
             echo "git-bin-add: SIGNATURE CONFLICT in $src!"
             echo "git-bin-add: $src  in store has size `stat -c%s $BINSTORE/$hash`, and your file has size `stat -c%s $src`"
             return
-        elif [[ -e $BINSTORE/$hash && -h $src ]]; then
-            echo "git-bin-add: nothing to do, $src is already in the binstore"
+        elif [[ -e $BINSTORE/$hash && `stat -c%s $BINSTORE/$hash` == `stat -c%s $src` ]]; then
+            echo "git-bin-add: duplicate file $src, pointing at existing binstore copy."
             #TODO: symlink it anyways. There might be multiple 'copies' of the same file in a git repo.
+            # drop the src file, symlink to the binstore:
+            cp -f $src .tmp_$hash
+            (rm -f $src && ln -s $BINSTORE/$hash $src && git add $src && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash $src)
             return
         fi
 
