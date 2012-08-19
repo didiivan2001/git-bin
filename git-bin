@@ -31,7 +31,7 @@ function addbin {
             # drop the src file, symlink to the binstore:
             cp -f $src .tmp_$hash
             (rm -f $src && ln -s $BINSTORE/$hash $src && git add $src && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash $src)
-            return
+            continue
         fi
 
         # BACKUP
