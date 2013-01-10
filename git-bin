@@ -1,3 +1,4 @@
+#!/bin/bash
 BINSTORE_BASE=${BINSTORE_BASE:-}
 
 if [ -z "$BINSTORE_BASE" ];
