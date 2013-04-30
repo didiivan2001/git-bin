@@ -10,46 +10,79 @@ fi
 remotename=`git remote -v | grep -E "origin.*push" | grep -oE "@([^ ]+)" | grep -oE "[:/][^ ]+" | cut -c 2-`
 binstore=$(dirname $BINSTORE_BASE/$remotename/blah) #using dirname with a fake file to clean up double slashes etc.
 
+function file_is_not_binary {
+    file $1 | grep -v directory | grep -vE ":.*data|ELF|Compiled|GLS|executable" 1>/dev/null 2>&1
+    return $?
+}
+
 function addbin {
     [[ -d $binstore ]] || mkdir -p $binstore
 
     while [[ ! -z "$1" ]];
     do
-        src=$1 ; shift
-        [[ "$(basename $src)" == "." ]] && continue
-        if [[ -d $src ]]; 
+        src="$1" ; shift
+        [[ $(basename "$src") == "." ]] && continue
+        if [[ -d "$src" ]]; 
         then
             echo "git-bin-add: descending into $src for recursive add."
-            addbin `find $src/. -maxdepth 1 -printf "$src/%f "`
+            IFS=$'\n'
+            for x in `find "$src/." -maxdepth 1 -printf "$src/%f\n"`
+            do
+                x=`echo "$x" | sed 's/\ /\\ /g'`
+                addbin "$x"
+            done
             continue
         fi
 
-        hash=`md5sum $src | cut -d" " -f1`
+        # if the file is not a binary file, use regular git-add
+        if file_is_not_binary "$src"
+        then
+            git add "$src"
+            continue
+        fi
+
+        hash=`md5sum "$src" | cut -d" " -f1`
+
         # check whether the file is already a symlink to its hash in the binstore
         # i.e. there is nothing to reset
-        [[ -L $src && "`readlink $src`" == "$binstore/$hash" ]] && continue 
+        [[ -L "$src" && "`readlink "$src"`" == "$binstore/$hash" ]] && continue 
 
         echo "git-bin-add: adding $src with hash $hash to $binstore"
 
-        if [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` != `stat -c%s $src` ]]; then
+        if [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` != `stat -c%s "$src"` ]]; then
             echo "git-bin-add: SIGNATURE CONFLICT in $src!"
-            echo "git-bin-add: $src  in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -c%s $src`"
+            echo "git-bin-add: $src in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -c%s "$src"`"
             return
-        elif [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` == `stat -c%s $src` ]]; then
+        elif [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` == `stat -c%s "$src"` ]]; then
             echo "git-bin-add: duplicate file $src, pointing at existing binstore copy."
             #TODO: symlink it anyways. There might be multiple 'copies' of the same file in a git repo.
             # drop the src file, symlink to the binstore:
-            cp -f $src .tmp_$hash
-            (rm -f $src && ln -s $binstore/$hash $src && git add $src && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash $src)
+            cp -f "$src" .tmp_$hash
+            (rm -f "$src" && ln -s $binstore/$hash "$src" && git add "$src" && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash $src)
             continue
         fi
 
         # BACKUP
-        cp -f $src .tmp_$hash
+        cp -f "$src" .tmp_$hash
 
-        (cp -f $src $binstore/$hash && rm -f $src && ln -s $binstore/$hash $src && git add $src && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash $src)
+        (cp -f "$src" $binstore/$hash && rm -f "$src" && ln -s $binstore/$hash "$src" && git add "$src" && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash "$src")
     done
 }
+
+# a function to add a file system. This isn't really necessary now that git-bin-add automatically detects non-binary files.
+#function addfs { 
+#    root="$1"
+#    [[ "x$root" == "x" ]] && root="."
+#
+#    find $root -print0 | xargs -0 file | grep -v directory  > /tmp/gitbin_addfs_list
+#    echo 'git-bin-addfs: `cat /tmp/gitbin_addfs_list | wc -l` files to be added'
+#
+#    echo 'git-bin-addfs: adding regular files'
+#    cat /tmp/gitbin_addfs_list | grep -vE ":.*data|ELF|Compiled|GLS" | cut -d":" -f1 | sed 's/ /\\ /g' | xargs git add
+#
+#    echo 'git-bin-addfs: adding binary files'
+#    cat /tmp/gitbin_addfs_list | grep -E ":.*data|ELF|Compiled|GLS" | cut -d":" -f1 | sed 's/ /\\ /g' | xargs git add
+#}
 
 function editbin {
     if [[ ! -d $binstore ]];
@@ -60,18 +93,18 @@ function editbin {
 
     while [[ ! -z "$1" ]];
     do
-        src=$1 ; shift
-        if [[ -d $src ]]; 
+        src="$1" ; shift
+        if [[ -d "$src" ]]; 
         then
             #editbin $src/*
             echo "git-bin-edit: recursive edits are disabled for your safety and sanity. Not descending into $src"
             continue
         fi
-        storefile=`readlink $src`
-        [[ $? == 1 || "$(dirname $storefile)" != "$binstore" ]] && continue #not a symlink
-        tmpfile=.tmp_$(basename $storefile)
+        storefile=`readlink "$src"`
+        [[ $? == 1 || $(dirname "$storefile") != "$BINSTORE" ]] && continue #not a symlink
+        tmpfile=.tmp_$(basename "$storefile")
 
-        cp $storefile $tmpfile && mv -f $tmpfile $src && echo "git-bin-edit: $src is now available for editing"
+        cp "$storefile" "$tmpfile" && mv -f "$tmpfile" "$src" && echo "git-bin-edit: $src is now available for editing"
     done
 }
 
@@ -85,33 +118,33 @@ function resetbin {
     while [[ ! -z "$1" ]];
     do
         src="$1" ; shift
-        if [[ -d $src ]]; 
+        if [[ -d "$src" ]]; 
         then
             #resetbin $src/*
             echo "git-bin-reset: recursive resets are disabled for your safety and sanity. Not descending into $src"
             continue
         fi
-        hash=`md5sum $src | cut -d" " -f1`
+        hash=`md5sum "$src" | cut -d" " -f1`
      
-        gitstatus="`git status --porcelain $src |cut -c -2 | sed -e 's/ //g'`"
+        gitstatus="`git status --porcelain "$src" |cut -c -2 | sed -e 's/ //g'`"
         case $gitstatus in
             "A")
                 # newly added file, not yet committed. need to copy the actual contents back and do a git reset HEAD
                 # the file will be a symlink to it's contents.
 
                 # check whether the file is already a symlink to its hash in the binstore
-                [[ -L $src && "`readlink $src`" == "$binstore/$hash" ]] || (echo "git-bin-reset: something is horribly wrong with $src. It should be a symlink to it's contents, but isn't" && return)
+                [[ -L "$src" && `readlink "$src"` == "$binstore/$hash" ]] || (echo "git-bin-reset: something is horribly wrong with $src. It should be a symlink to it's contents, but isn't" && return)
 
-                symtarget=`readlink $src`
+                symtarget=`readlink "$src"`
                 echo "git-bin-reset: unstaging $src"
-                rm -f $src && cp -f $symtarget $src && git reset HEAD $src
+                rm -f "$src" && cp -f "$symtarget" "$src" && git reset HEAD "$src"
                 ;;
             "T")
                 # editted file (type changed from symlink to real file). need to do git checkout -- 
                 # the file is not a symlink to it's contents.
                 # check whether the file is already a symlink to its hash in the binstore
                 # i.e. there is nothing to reset
-                [[ -L $src && "`readlink $src`" == "$binstore/$hash" ]] && continue 
+                [[ -L "$src" && `readlink "$src"` == "$binstore/$hash" ]] && continue 
 
                 if [[ ! -e $binstore/$hash ]];
                 then
@@ -121,14 +154,14 @@ function resetbin {
                     # had a type change (i.e. going from a symlink to a regular file). This will be the
                     # status even if the file has also had its contents changed. If this is not the case,
                     # we should just ignore the file as it's probably not a git-bin file.
-                    git status $src | grep -E "typechange: $src\$" 2>&1 >/dev/null || continue
+                    git status "$src" | grep -E "typechange: $src\$" 2>&1 >/dev/null || continue
                     
                     #otherwise, the file has changed, so we should back it up!
                     echo "git-bin-reset: $src has changed, saving a copy to /tmp/$src.$hash"
-                    cp -f $src /tmp/$src.$hash
+                    cp -f "$src" /tmp/$(basename "$src").$hash
                 else
                     # The has is in the binstore. We need to check for signature conflicts:
-                    if [[ `stat -c%s $binstore/$hash` != `stat -c%s $src` ]]; then
+                    if [[ `stat -c%s $binstore/$hash` != `stat -c%s "$src"` ]]; then
                         echo "git-bin-reset: SIGNATURE CONFLICT in $src!"
                         echo "git-bin-reset: $src in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -c%s $src`"
                         return
@@ -137,7 +170,7 @@ function resetbin {
                 # now we can just restore the file using git.
                 echo "git-bin-reset: restoring $src to the git HEAD"
                 # we need a to checkout from head:
-                rm -f $src && git checkout -- $src
+                rm -f "$src" && git checkout -- "$src"
                 ;;
             *)
                 echo "unkown git status for file $gitstatus $src"
@@ -155,7 +188,7 @@ case $funcname in
             echo "git-bin: you must specify a file name to operate on!"
             exit 1
         fi
-        eval ${funcname}bin $@
+        (IFS=$'\n'; eval ${funcname}bin "$@")
         ;;
     *) 
         echo "git-bin error: '$funcname' not a recognized command"
