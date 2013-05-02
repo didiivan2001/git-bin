@@ -15,22 +15,28 @@ function file_is_not_binary {
     return $?
 }
 
-function addbin {
-    [[ -d $binstore ]] || mkdir -p $binstore
+function verify_binstore {
+    if [[ ! -d $binstore ]];
+    then
+        echo "git-bin: the binstore ($binstore) doesn't exist. You probably haven't added any binaries to git-bin yet. Creating it now"
+        mkdir -p $binstore
+        return 1
+    fi
+    ## TODO: verify that it is accessible, handle local caching?
+}
 
-    while [[ ! -z "$1" ]];
+function git-bin-add {
+    local args=("${!1}")
+    verify_binstore
+
+    for src in "${args[@]}"
     do
-        src="$1" ; shift
         [[ $(basename "$src") == "." ]] && continue
         if [[ -d "$src" ]]; 
         then
             echo "git-bin-add: descending into $src for recursive add."
-            IFS=$'\n'
-            for x in `find "$src/." -maxdepth 1 -printf "$src/%f\n"`
-            do
-                x=`echo "$x" | sed 's/\ /\\ /g'`
-                addbin "$x"
-            done
+            children=("$src"/*)
+            git-bin-add children[@]
             continue
         fi
 
@@ -84,49 +90,58 @@ function addbin {
 #    cat /tmp/gitbin_addfs_list | grep -E ":.*data|ELF|Compiled|GLS" | cut -d":" -f1 | sed 's/ /\\ /g' | xargs git add
 #}
 
-function editbin {
-    if [[ ! -d $binstore ]];
-    then
-        echo "git-bin-edit: the binstore ($binstore) doesn't exist. You probably haven't added any binaries to git-bin yet."
-        return
-    fi
+function git-bin-edit {
+    local args=("${!1}")
+    verify_binstore || return # nothing to do if there isn't a binstore
 
-    while [[ ! -z "$1" ]];
+    for src in "${args[@]}"
     do
-        src="$1" ; shift
         if [[ -d "$src" ]]; 
         then
-            #editbin $src/*
             echo "git-bin-edit: recursive edits are disabled for your safety and sanity. Not descending into $src"
             continue
         fi
         storefile=`readlink "$src"`
-        [[ $? == 1 || $(dirname "$storefile") != "$BINSTORE" ]] && continue #not a symlink
+        [[ $? == 1 || $(dirname "$storefile") != "$binstore" ]] && continue #not a symlink
         tmpfile=.tmp_$(basename "$storefile")
 
         cp "$storefile" "$tmpfile" && mv -f "$tmpfile" "$src" && echo "git-bin-edit: $src is now available for editing"
     done
 }
 
-function resetbin {
-    if [[ ! -d $binstore ]];
-    then
-        echo "git-bin-reset: the binstore ($binstore) doesn't exist. You probably haven't added any binaries to git-bin yet."
-        return
-    fi
+function git-bin-reset {
+    local args=("${!1}")
+    verify_binstore || return # nothing to do if there isn't a binstore
 
-    while [[ ! -z "$1" ]];
+    for src in "${args[@]}"
     do
-        src="$1" ; shift
         if [[ -d "$src" ]]; 
         then
-            #resetbin $src/*
             echo "git-bin-reset: recursive resets are disabled for your safety and sanity. Not descending into $src"
             continue
         fi
+
+        gitstatus=`git status --porcelain "$src" |cut -c -2 | sed -e 's/ //g'`
+
+        # if the file is not a binary file, use regular git-add
+        if file_is_not_binary "$src"
+        then
+            case $gitstatus in
+                "A")
+                    # new file, just git reset it
+                    git reset HEAD "$src"
+                    ;;
+                "M")
+                    # file modified in index, need to checkout --
+                    cp -f "$src" /tmp/$(basename "$src").justincase
+                    git checkout -- "$src"
+                    ;;
+            esac
+            continue
+        fi
+
         hash=`md5sum "$src" | cut -d" " -f1`
      
-        gitstatus="`git status --porcelain "$src" |cut -c -2 | sed -e 's/ //g'`"
         case $gitstatus in
             "A")
                 # newly added file, not yet committed. need to copy the actual contents back and do a git reset HEAD
@@ -173,13 +188,14 @@ function resetbin {
                 rm -f "$src" && git checkout -- "$src"
                 ;;
             *)
-                echo "unkown git status for file $gitstatus $src"
+                echo "unknown git status for file $gitstatus $src"
                 ;;
         esac
     done
 }
 
 funcname=$1 ; shift
+argv=("$@")
 
 case $funcname in
     add|edit|reset) 
@@ -188,7 +204,7 @@ case $funcname in
             echo "git-bin: you must specify a file name to operate on!"
             exit 1
         fi
-        (IFS=$'\n'; eval ${funcname}bin "$@")
+        eval git-bin-${funcname} argv[@]
         ;;
     *) 
         echo "git-bin error: '$funcname' not a recognized command"
