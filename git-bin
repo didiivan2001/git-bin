@@ -11,7 +11,7 @@ remotename=`git remote -v | grep -E "origin.*push" | grep -oE "@([^ ]+)" | grep 
 binstore=$(dirname $BINSTORE_BASE/$remotename/blah) #using dirname with a fake file to clean up double slashes etc.
 
 function file_is_not_binary {
-    file $1 | grep -v directory | grep -vE ":.*data|ELF|Compiled|GLS|executable|archive" 1>/dev/null 2>&1
+    file $1 | grep -v directory | grep -vE ":.*data|ELF|Compiled|GLS|executable|archive|Microsoft" 1>/dev/null 2>&1
     return $?
 }
 
