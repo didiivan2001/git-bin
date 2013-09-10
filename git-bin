@@ -7,7 +7,7 @@ then
     exit 2
 fi
 
-remotename=`git remote -v | grep -E "origin.*push" | grep -oE "@([^ ]+)" | grep -oE "[:/][^ ]+" | cut -c 2-`
+remotename=`git remote -v | grep -E "origin.*push" | grep -oE "@([^ ]+)" | grep -oE "[:/][^ ]+" | sed 's/^[:\/]*//;s/\.git$//'`
 binstore=$(dirname $BINSTORE_BASE/$remotename/blah) #using dirname with a fake file to clean up double slashes etc.
 
 function file_is_not_binary {
@@ -187,6 +187,9 @@ function git-bin-reset {
                 # we need a to checkout from head:
                 rm -f "$src" && git checkout -- "$src"
                 ;;
+            "")
+				# nothing to see here. move along.
+				;;
             *)
                 echo "unknown git status for file '$gitstatus' $src"
                 ;;
