@@ -41,7 +41,7 @@ function git-bin-add {
         fi
 
         # if the file is not a binary file, use regular git-add
-        if file_is_not_binary "$src"
+        if [[ -L "$src" && `readlink "$src"` != "${binstore}*" ]] || file_is_not_binary "$src"
         then
             git add "$src"
             continue
@@ -55,10 +55,10 @@ function git-bin-add {
 
         echo "git-bin-add: adding $src with hash $hash to $binstore"
 
-        if [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` != `stat -c%s "$src"` ]]; then
+        if [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` != `stat -Lc%s "$src"` ]]; then
             echo "git-bin-add: SIGNATURE CONFLICT in $src!"
-            echo "git-bin-add: $src in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -c%s "$src"`"
-            return
+            echo "git-bin-add: $src in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -Lc%s "$src"`"
+            continue
         elif [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` == `stat -c%s "$src"` ]]; then
             echo "git-bin-add: duplicate file $src, pointing at existing binstore copy."
             #TODO: symlink it anyways. There might be multiple 'copies' of the same file in a git repo.
@@ -70,8 +70,7 @@ function git-bin-add {
 
         # BACKUP
         cp -f "$src" .tmp_$hash
-
-        (cp -f "$src" $binstore/$hash && rm -f "$src" && ln -s $binstore/$hash "$src" && git add "$src" && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, reverting" && mv -f .tmp_$hash "$src")
+        (cp -f "$src" $binstore/$hash && rm -f "$src" && ln -s $binstore/$hash "$src" && git add "$src" && rm -f .tmp_$hash) || (echo "git-bin-add: something went wrong when adding $src, HHHHH reverting" && mv -f .tmp_$hash "$src")
     done
 }
 
