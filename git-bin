@@ -32,6 +32,15 @@ function git-bin-add {
     for src in "${args[@]}"
     do
         [[ $(basename "$src") == "." ]] && continue
+        # if the file is a symlink, which doesn't point into the binstore (i.e.
+        # it was a symlink originally), just add it. We do this before the 
+        # check for directory, so that we don't traverse symlinked dirs.
+        if [[ -L "$src" && `readlink "$src"` != "${binstore}*" ]]
+        then
+            git add $src
+            continue
+        fi
+
         if [[ -d "$src" ]]; 
         then
             echo "git-bin-add: descending into $src for recursive add."
@@ -41,7 +50,7 @@ function git-bin-add {
         fi
 
         # if the file is not a binary file, use regular git-add
-        if [[ -L "$src" && `readlink "$src"` != "${binstore}*" ]] || file_is_not_binary "$src"
+        if file_is_not_binary "$src"
         then
             git add "$src"
             continue
