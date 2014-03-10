@@ -14,9 +14,15 @@ binstore=$(dirname $BINSTORE_BASE/$remotename/blah) #using dirname with a fake f
     function get_hash () {
         md5 -q $@
     }
+    function get_filesize () {
+        stat -f%z $@
+    }
 } || {
     function get_hash () {
         md5sum $@ | cut -d" " -f1
+    }
+    function get_filesize () {
+        stat -c%s
     }
 }
 
@@ -74,11 +80,11 @@ function git-bin-add {
 
         echo "git-bin-add: adding $src with hash $hash to $binstore"
 
-        if [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` != `stat -Lc%s "$src"` ]]; then
+        if [[ -e $binstore/$hash && $(get_filesize $binstore/$hash) != $(get_filesize -L "$src") ]]; then
             echo "git-bin-add: SIGNATURE CONFLICT in $src!"
-            echo "git-bin-add: $src in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -Lc%s "$src"`"
+            echo "git-bin-add: $src in store has size $(get_filesize $binstore/$hash), and your file has size $(get_filesize -L "$src")"
             continue
-        elif [[ -e $binstore/$hash && `stat -c%s $binstore/$hash` == `stat -c%s "$src"` ]]; then
+        elif [[ -e $binstore/$hash && $(get_filesize $binstore/$hash) == $(get_filesize "$src") ]]; then
             echo "git-bin-add: duplicate file $src, pointing at existing binstore copy."
             #TODO: symlink it anyways. There might be multiple 'copies' of the same file in a git repo.
             # drop the src file, symlink to the binstore:
@@ -158,7 +164,7 @@ function git-bin-reset {
             continue
         fi
 
-        hash=`md5sum "$src" | cut -d" " -f1`
+        hash=$(get_hash "$src")
      
         case $gitstatus in
             "A")
@@ -194,9 +200,9 @@ function git-bin-reset {
                     cp -f "$src" /tmp/$(basename "$src").$hash
                 else
                     # The has is in the binstore. We need to check for signature conflicts:
-                    if [[ `stat -c%s $binstore/$hash` != `stat -c%s "$src"` ]]; then
+                    if [[ $(get_filesize $binstore/$hash) != $(get_filesize "$src") ]]; then
                         echo "git-bin-reset: SIGNATURE CONFLICT in $src!"
-                        echo "git-bin-reset: $src in store has size `stat -c%s $binstore/$hash`, and your file has size `stat -c%s $src`"
+                        echo "git-bin-reset: $src in store has size $(get_filesize $binstore/$hash), and your file has size $(get_filesize $src)"
                         return
                     fi
                 fi
