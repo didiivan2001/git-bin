@@ -22,7 +22,7 @@ binstore=$(dirname $BINSTORE_BASE/$remotename/blah) #using dirname with a fake f
         md5sum $@ | cut -d" " -f1
     }
     function get_filesize () {
-        stat -c%s
+        stat -c%s $@
     }
 }
 
