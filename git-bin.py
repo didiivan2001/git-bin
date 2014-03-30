@@ -205,6 +205,13 @@ def build_options_parser():
     return parser
 
 
+
+# TODO:
+# - implement git operations
+# - impelement binstore
+#       - use symlink in .git/ folder
+#       - reverse lookups
+# - implement offline/online commands
 def main(args):
     binstore = Binstore()
     if args.command in commands:
