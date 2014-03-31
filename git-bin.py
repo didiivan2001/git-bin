@@ -1,8 +1,18 @@
 #!/usr/bin/env python
 import os.path
 import glob
-import shutil
 import argparse
+import subprocess
+import platform
+
+if platform.system() == "Darwin":
+    md5_prog = "md5"
+elif platform.system() == "Linux":
+    md5_prog = "md5 --tag"
+
+
+def call_prog(cmd, args):
+    return subprocess.check_call([cmd] + args)
 
 
 class FileInfo:
@@ -25,7 +35,10 @@ class FileInfo:
         return os.path.isdir(self._filename)
 
     def is_binary(self):
-        raise NotImplemented
+        res = call_prog("file", ["-L", "--mime", self._filename])
+        if "charset=binary" in res or "charset=binary" in res:
+            return True
+        return False
 
     def get_children(self, pattern):
         dirname = self._filename
@@ -33,14 +46,28 @@ class FileInfo:
             dirname += "/"
         glob.glob(dirname + pattern)
 
+    def get_md5(self):
+        res = call_prog(md5_prog, [self._filename])
+        # parse the BSD style md5 tag:
+        # MD5 (xxx) = 9a5c65d696bdaf75793b29c21c432107
+        return res.rsplit("=")[1].strip()
+
     def get_hash(self):
-        raise NotImplemented
+        return self.get_md5()
 
     def size(self):
         return os.path.getsize(self._filename)
 
+    def git_status(self):
+        res = call_prog("git", ["--porcelain", self._filename])
+        status_char, null, filename = res.strip().partition(" ")
+        return status_char
+
 
 class Binstore:
+
+    def __init__(self, basedir):
+        self._basedir = basedir
 
     def has_file(self, hash):
         raise NotImplemented
@@ -53,7 +80,6 @@ class Binstore:
 
     def add_file(self, fo):
         raise NotImplemented
-
 
 
 class Command:
@@ -141,7 +167,6 @@ class EditCommand(Command):
                 self.binstore.get_file(fi)
 
 
-
 class ResetCommand(Command):
 
     def __init__(self, binstore):
@@ -203,7 +228,6 @@ def build_options_parser():
         help='the files on which to perform the command')
 
     return parser
-
 
 
 # TODO:
