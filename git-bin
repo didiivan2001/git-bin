@@ -28,7 +28,11 @@ binstore=$(dirname $BINSTORE_BASE/$remotename/blah) #using dirname with a fake f
 
 function file_is_not_binary {
     file -L --mime "$1" | grep -vE '(charset=binary|charset=unknown)' 1>/dev/null 2>&1 
-    return $?
+    mime_not_bin=$?
+    ## special case for flash image: ISO-8859 text, with very long lines, with no line terminators
+    file -L "$1" | grep -v 'no line terminators' 1>/dev/null 2>&1
+    special_case_not_bin=$?
+    return $(($mime_not_bin+$special_case_not_bin))
 }
 
 function verify_binstore {
