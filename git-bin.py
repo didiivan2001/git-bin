@@ -236,6 +236,11 @@ def build_options_parser():
 #       - use symlink in .git/ folder
 #       - reverse lookups
 # - implement offline/online commands
+# - use a .gitbin file to store parameters
+#       - init command?
+#       - if file doesn't exist, suggest creating it on first use
+#       - this file should be committed
+# - detect online binstore available. if so, and was offline, suggest going online.
 def main(args):
     binstore = Binstore()
     if args.command in commands:
