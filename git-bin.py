@@ -21,26 +21,39 @@ class UndoableCommand(Command):
     def __init__(self):
         Command.__init__(self)
 
-    def execute(self, *args, **kwargs):
+    def execute(self):
         try:
-            return self._execute(*args, **kwargs)
+            return self._execute()
         except Exception:
             self.undo()
             exc_info = sys.exc_info()
             raise exc_info[1], None, exc_info[2]
 
-    def _execute(self, *args, **kwargs):
+    def _execute(self):
         raise NotImplemented()
 
     def undo(self):
         raise NotImplemented()
 
 
+class CompoundCommand(Command):
+
+    def __init__(self, *args):
+        self.commands = args
+
+    def execute(self):
+        for cmd in self.commands:
+            cmd.execute()
+
+    def push(self, command):
+        self.commands.append(command)
+
+
 class NotAFileException(BaseException):
     pass
 
 
-class CopyFileCommand(UndoableCommand):
+class CopyFileCommand(Command):
 
     def __init__(self, src, dest):
         self.src = src
@@ -50,10 +63,6 @@ class CopyFileCommand(UndoableCommand):
 
     def _execute(self):
         shutil.copy(self.src, self.dest)
-
-    def undo(self):
-        """ we don't need to do anything, as the copy does not damage the original """
-        pass
 
 
 class MoveFileCommand(UndoableCommand):
@@ -76,12 +85,15 @@ class MoveFileCommand(UndoableCommand):
 
 class SafeMoveFileCommand(MoveFileCommand):
 
-    def __init__(self, src, dest):
+    def __init__(self, src, dest, backupfile_dir=None):
         MoveFileCommand.__init__(self, src, dest)
+        if not backupfile_dir:
+            self.backupfile_dir = os.path.dirname(self.src)
+        else:
+            self.backupfile_dir = backupfile_dir
 
     def _execute(self):
-        dirname = os.path.dirname(self.src)
-        backup_filename = os.path.join(dirname, "._tmp_." + os.path.basename(self.src))
+        backup_filename = os.path.join(self.backupfile_dir, "._tmp_." + os.path.basename(self.src))
         # keep a copy of the files locally
         self.copy_cmd = CopyFileCommand(self.src, backup_filename)
         self.copy_cmd.execute()
@@ -91,9 +103,18 @@ class SafeMoveFileCommand(MoveFileCommand):
         os.remove(backup_filename)
 
     def undo(self):
-        dirname = os.path.dirname(self.src)
-        backup_filename = os.path.join(dirname, "._tmp_." + os.path.basename(self.src))
+        backup_filename = os.path.join(self.backupfile_dir, "._tmp_." + os.path.basename(self.src))
         shutil.move(backup_filename, self.src)
+
+
+class LinkToFileCommand(Command):
+
+    def __init__(self, linkname, targetname):
+        self.linkname = linkname
+        self.targetname = targetname
+
+    def _execute(self):
+        os.symlink(self.targetname, self.linkname)
 
 
 class Binstore(object):
@@ -105,6 +126,7 @@ class Binstore(object):
         raise NotImplemented
 
 
+
 class FilesystemBinstore(Binstore):
 
     def __init__(self, path):
@@ -112,94 +134,71 @@ class FilesystemBinstore(Binstore):
         self.path = path
 
     def add_file(self, filename):
-        commands = []
-
         digest = utils.md5_file(filename)
         binstore_filename = os.path.join(self.path, digest)
 
-        commands.push(CopyFileCommand(filename, binstore_filename))
+        commands = CompoundCommand(
+            [
+                SafeMoveFileCommand(filename, binstore_filename),
+                LinkToFileCommand(filename, binstore_filename)
+            ]
+        )
 
+        commands.execute()
 
-class FileInfo:
+    def edit_file(self, filename):
+        binstore_filename = os.readlink(filename)
 
-    def __init__(self, filename):
-        self._filename = filename
+        commands = CompoundCommand(
+            [
+                SafeMoveFileCommand(binstore_filename, filename, os.path.dirname(filename)),
+            ]
+        )
 
-    def basename(self):
-        if self._filename[-1] == "/":
-            return os.path.basename(self._filename[:-1])
-        return os.path.basename(self._filename)
+        commands.execute()
 
-    def is_symlink(self):
-        return os.path.islink(self._filename)
+    def is_binstore_link(self, filename):
+        if not os.path.islink(filename):
+            return False
 
-    def is_symlink_to_binstore(self):
-        raise NotImplemented
+        if (os.readlink(filename).startswith(self.path) and
+                self.has_file(os.readlink(filename))):
+                return True
 
-    def is_dir(self):
-        return os.path.isdir(self._filename)
-
-    def is_binary(self):
-        res = call_prog("file", ["-L", "--mime", self._filename])
-        if "charset=binary" in res or "charset=binary" in res:
-            return True
         return False
 
-    def get_children(self, pattern):
-        dirname = self._filename
-        if dirname[-1] != "/":
-            dirname += "/"
-        glob.glob(dirname + pattern)
 
-    def get_md5(self):
-        res = call_prog(md5_prog, [self._filename])
-        # parse the BSD style md5 tag:
-        # MD5 (xxx) = 9a5c65d696bdaf75793b29c21c432107
-        return res.rsplit("=")[1].strip()
-
-    def get_hash(self):
-        return self.get_md5()
-
-    def size(self):
-        return os.path.getsize(self._filename)
-
-    def git_status(self):
-        res = call_prog("git", ["--porcelain", self._filename])
-        status_char, null, filename = res.strip().partition(" ")
-        return status_char
-
-
-class Binstore:
-
-    def __init__(self, basedir):
-        self._basedir = basedir
-
-    def has_file(self, hash):
-        raise NotImplemented
-
-    def get_fileinfo(self, hash):
-        raise NotImplemented
-
-    def set_link(self, fo):
-        raise NotImplemented
-
-    def add_file(self, fo):
-        raise NotImplemented
-
-
-class Command:
+class GitBin(object):
 
     def __init__(self, binstore):
         self.binstore = binstore
 
-    def perform(self, files):
-        self._perform(files)
+    def add(self, filenames):
+        """ Add a list of files, specified by their full paths, to the binstore. """
+        if not isinstance(filenames, list):
+            filenames = [filenames]
 
-    def _perform(self, files):
-        raise NotImplemented
+        for filename in filenames:
+            # if the file is a link, but the target is not in the binstore (i.e.
+            # this was a real symlink originally), we can just add it. This check
+            # is before the check for dirs so that we don't traverse symlinked dirs.
+            if os.path.islink(filename) and not self.binstore.has_file(os.readlink(filename)):
+                print "DO_GIT_ADD"
+                continue
 
-    def _print(self, message):
-        print message
+            if not utils.is_file_binary(filename):
+                print "DO_GIT_ADD"
+                continue
+
+            if self.binstore.is_binstore_link(filename):
+                # the file is already a symlink into the binstore. Nothing to do!
+                return
+
+            # if the filename is a directory, recurse into it.
+            # TODO: maybe make recursive directory crawls optional/configurable
+            if os.path.isdir(filename):
+                for root, dirs, files in os.walk(filename):
+                    self.add([os.path.join(root, fn) for fn in files])
 
 
 class AddCommand(Command):
