@@ -2,17 +2,122 @@
 import os.path
 import glob
 import argparse
-import subprocess
-import platform
-
-if platform.system() == "Darwin":
-    md5_prog = "md5"
-elif platform.system() == "Linux":
-    md5_prog = "md5 --tag"
+import utils
+import shutil
+import sys
 
 
-def call_prog(cmd, args):
-    return subprocess.check_call([cmd] + args)
+class Command(object):
+
+    def __init__(self):
+        pass
+
+    def execute(self, *args, **kwargs):
+        raise NotImplemented()
+
+
+class UndoableCommand(Command):
+
+    def __init__(self):
+        Command.__init__(self)
+
+    def execute(self, *args, **kwargs):
+        try:
+            return self._execute(*args, **kwargs)
+        except Exception:
+            self.undo()
+            exc_info = sys.exc_info()
+            raise exc_info[1], None, exc_info[2]
+
+    def _execute(self, *args, **kwargs):
+        raise NotImplemented()
+
+    def undo(self):
+        raise NotImplemented()
+
+
+class NotAFileException(BaseException):
+    pass
+
+
+class CopyFileCommand(UndoableCommand):
+
+    def __init__(self, src, dest):
+        self.src = src
+        self.dest = dest
+        if not os.path.isfile(src):
+            raise NotAFileException()
+
+    def _execute(self):
+        shutil.copy(self.src, self.dest)
+
+    def undo(self):
+        """ we don't need to do anything, as the copy does not damage the original """
+        pass
+
+
+class MoveFileCommand(UndoableCommand):
+
+    def __init__(self, src, dest):
+        self.src = src
+        self.dest = dest
+        if not os.path.isfile(src):
+            raise NotAFileException()
+
+    def _execute(self):
+        # TODO: check for existance of dest and maybe abort? As it is, this
+        # will automatically overwrite.
+        shutil.move(self.src, self.dest)
+
+    def undo(self):
+        # TODO: perhaps check to see that the file was moved cleanly?
+        shutil.move(self.dest, self.src)
+
+
+class SafeMoveFileCommand(MoveFileCommand):
+
+    def __init__(self, src, dest):
+        MoveFileCommand.__init__(self, src, dest)
+
+    def _execute(self):
+        dirname = os.path.dirname(self.src)
+        backup_filename = os.path.join(dirname, "._tmp_." + os.path.basename(self.src))
+        # keep a copy of the files locally
+        self.copy_cmd = CopyFileCommand(self.src, backup_filename)
+        self.copy_cmd.execute()
+        # move the file
+        MoveFileCommand._execute(self)
+        # remove the local copy
+        os.remove(backup_filename)
+
+    def undo(self):
+        dirname = os.path.dirname(self.src)
+        backup_filename = os.path.join(dirname, "._tmp_." + os.path.basename(self.src))
+        shutil.move(backup_filename, self.src)
+
+
+class Binstore(object):
+
+    def __init__(self):
+        pass
+
+    def add_file(self, filename):
+        raise NotImplemented
+
+
+class FilesystemBinstore(Binstore):
+
+    def __init__(self, path):
+        Binstore.__init__(self)
+        self.path = path
+
+    def add_file(self, filename):
+        commands = []
+
+        digest = utils.md5_file(filename)
+        binstore_filename = os.path.join(self.path, digest)
+
+        commands.push(CopyFileCommand(filename, binstore_filename))
 
 
 class FileInfo:
