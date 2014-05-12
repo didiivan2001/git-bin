@@ -1,5 +1,6 @@
 import os.path
 import os
+from collections import OrderedDict
 
 
 # TODO: this is a little naive. When inside a submodule for example, we'll find
@@ -25,19 +26,48 @@ class GitConfig(object):
 
     def __init__(self, filename):
         self.filename = filename
-        self.load(filename)
+        self.sections = OrderedDict()
+        self.load()
 
     def load(self):
-        raise NotImplemented
+        # HACK: super naive implementation of git style config files.
+        with open(self.filename, "rt") as f:
+            current_section = None
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                if line.startswith("#"):
+                    continue
+
+                if line.startswith("["):
+                    section_name = line[1:line.find("]")]
+                    if not section_name in self.sections:
+                        self.sections[section_name] = OrderedDict()
+                    current_section = self.sections[section_name]
+                elif "=" in line:
+                    key, null, value = line.partition("=")
+                    current_section[key.strip()] = value.strip()
 
     def write(self):
-        raise NotImplemented
+        data = ""
+        for section_name, properties in self.sections.items():
+            data += "[%s]\n" % section_name
+            for key, value in properties.items():
+                data += "\t%s = %s\n" % (key, value)
+        with open(self.filename, "wt") as f:
+            f.write(data)
 
-    def get(self, section, key):
-        raise NotImplemented
+    def get(self, section, key, default=None):
+        if not section in self.sections:
+            raise ValueError
+        return self.sections[section].get(key, default)
 
     def set(self, section, key, value):
-        raise NotImplemented
+        if not section in self.sections:
+            self.sections[section] = OrderedDict()
+        self.sections[section][key] = value
 
 
 class GitRepo(object):
@@ -64,3 +94,8 @@ class GitRepo(object):
 
     def write_config(self):
         self.config.write()
+
+if __name__ == "__main__":
+    gr = GitRepo(".")
+    gr.get_config().sections["binstore"]["test123"] = "test12345"
+    gr.write_config()
