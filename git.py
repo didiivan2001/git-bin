@@ -1,6 +1,7 @@
 import os.path
 import os
 from collections import OrderedDict
+import sh
 
 
 # TODO: this is a little naive. When inside a submodule for example, we'll find
@@ -70,6 +71,37 @@ class GitConfig(object):
         self.sections[section][key] = value
 
 
+STATUS_UNTRACKED = 0x01
+STATUS_STAGED = 0x02
+STATUS_UNSTAGED = 0x04
+STATUS_MODIFIED = 0x08
+STATUS_DELETED = 0x10
+STATUS_RENAMED = 0x20
+STATUS_TYPECHANGED = 0x40
+STATUS_ADDED = 0x80
+STATUS_COPIED = 0x100
+
+STATUS_STAGED_MASK = 0x6
+STATUS_CHANGED_MASK = 0x1f8
+
+status_map = {
+    "M": STATUS_MODIFIED,
+    "D": STATUS_DELETED,
+    "R": STATUS_RENAMED,
+    "T": STATUS_TYPECHANGED,
+    "A": STATUS_ADDED,
+    "C": STATUS_COPIED,
+}
+
+
+class UnknownGitStatusException:
+    pass
+
+
+class GitOperationException:
+    pass
+
+
 class GitRepo(object):
 
     def __init__(self, path):
@@ -81,13 +113,50 @@ class GitRepo(object):
         self.config = GitConfig(os.path.join(self.path, ".git", "config"))
 
     def status(self, filename):
-        raise NotImplemented
+        res = sh.git.status(filename, porcelain=True)
+        marker = res.strip().split(" ")[0]
+        if marker == "??":
+            return STATUS_UNTRACKED
+        elif marker[0] == " ":
+            ret = STATUS_UNSTAGED
+            if not marker[1] in status_map:
+                raise UnknownGitStatusException
+            return ret | status_map[marker[1]]
+        elif marker[1] == " ":
+            ret = STATUS_STAGED
+            if not marker[0] in status_map:
+                raise UnknownGitStatusException
+            return ret | status_map[marker[0]]
+
+        raise UnknownGitStatusException
 
     def add(self, filename):
-        raise NotImplemented
+        res = sh.git.add(filename)
+        if res.exit_code:
+            raise GitOperationException
 
-    def unstage(self, filename):
-        raise NotImplemented
+    def unstage(self, filename, nocheck=False):
+        status = self.status(filename)
+        if not nocheck and status & STATUS_STAGED_MASK != STATUS_STAGED:
+            # nothing to do.
+            return
+        res = sh.git.reset("HEAD", filename)
+        if res.exit_code:
+            raise GitOperationException
+
+    def restore(self, filename):
+        """ Restores a file to it's original value at HEAD."""
+        status = self.status(filename)
+        if not status & STATUS_CHANGED_MASK:
+            # the file hasn't changed. There's nothing to restore
+            # TODO: should we be unstaging at this point???
+            return
+
+        if status & STATUS_STAGED_MASK == STATUS_STAGED:
+            self.unstage(filename, nocheck=True)
+        res = sh.git.checkout("--", filename)
+        if res.exit_code:
+            raise GitOperationException
 
     def get_config(self):
         return self.config
