@@ -25,6 +25,17 @@ class NotARepoException(Exception):
 
 class GitConfig(object):
 
+    """ Abstract base gitconfig class """
+
+    def get(self, section, key, default=None):
+        raise NotImplemented
+
+    def set(self, section, key, value):
+        raise NotImplemented
+
+
+class GitFileConfig(GitConfig):
+
     def __init__(self, filename):
         self.filename = filename
         self.sections = OrderedDict()
@@ -44,7 +55,7 @@ class GitConfig(object):
 
                 if line.startswith("["):
                     section_name = line[1:line.find("]")]
-                    if not section_name in self.sections:
+                    if section_name not in self.sections:
                         self.sections[section_name] = OrderedDict()
                     current_section = self.sections[section_name]
                 elif "=" in line:
@@ -61,14 +72,30 @@ class GitConfig(object):
             f.write(data)
 
     def get(self, section, key, default=None):
-        if not section in self.sections:
-            raise ValueError
+        if section not in self.sections:
+            return default
         return self.sections[section].get(key, default)
 
     def set(self, section, key, value):
-        if not section in self.sections:
+        if section not in self.sections:
             self.sections[section] = OrderedDict()
         self.sections[section][key] = value
+
+
+class GitCommandConfig(GitConfig):
+
+    def __init__(self, gitrepo):
+        self.gitrepo = gitrepo
+        self.git = sh.git.bake("--git-dir", os.path.join(self.gitrepo.path, ".git"))
+
+    def get(self, section, key, default=None):
+        try:
+            return str(self.git.config("--get", "%s.%s" % (section, key))).strip()
+        except sh.ErrorReturnCode:
+            return default
+
+    def set(self, section, key, value):
+        self.git.config("%s.%s" % (section, key), value)
 
 
 STATUS_UNTRACKED = 0x01
@@ -110,7 +137,12 @@ class GitRepo(object):
                 os.path.expanduser(find_repo_root(path))
             )
         )
-        self.config = GitConfig(os.path.join(self.path, ".git", "config"))
+        self.config = GitCommandConfig(self)
+        remote_origin = self.config.get("remote.origin", "url", None)
+        if remote_origin and ":" in remote_origin:
+            self.reponame = remote_origin.strip().split(":")[1]
+        else:
+            self.reponame = os.path.basename(self.path)
 
     def status(self, filename):
         res = sh.git.status(filename, porcelain=True)

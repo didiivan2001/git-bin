@@ -4,8 +4,8 @@ import argparse
 import stat
 
 import utils
-import git
 import commands as cmd
+import git
 
 
 class Binstore(object):
@@ -32,15 +32,24 @@ class Binstore(object):
         """ Test whether a given item is in this binstore. The item may be a hash or a symlink in the repo """
         raise NotImplemented
 
+    def available(self):
+        """ Test to see whether the binstore can be reached. """
+        raise NotImplemented
+
+
+class SSHFSBinstore(Binstore):
+    pass
+
 
 class FilesystemBinstore(Binstore):
 
-    def __init__(self, gitrepo, binstore_base):
+    def __init__(self, gitrepo):
         Binstore.__init__(self)
         self.gitrepo = gitrepo
         # retrieve the binstore path from the .git/config
         # TODO: what should we do if there is no path? It's a git-bin-init situation
-        self.path = gitrepo.config.get("binstore", "path")
+        self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
+        self.path = self.gitrepo.config.get("binstore", "path", None)
         if not self.path:
             self.init()
 
@@ -49,7 +58,22 @@ class FilesystemBinstore(Binstore):
         # TODO: create the .git/binstore symlink
         # TODO: set the settings in .git/config [binstore]
         # TODO: set self.path
-        raise NotImplemented
+        binstore_base = self.gitrepo.config.get("git-bin", "binstorebase", None)
+        if not binstore_base:
+            raise Exception("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
+        self.path = os.path.join(binstore_base, self.gitrepo.reponame)
+        print self.path
+        print self.localpath
+
+        commands = cmd.CompoundCommand(
+            [
+                cmd.MakeDirectoryCommand(self.path),
+                cmd.LinkToFileCommand(self.localpath, self.path),
+            ]
+        )
+        commands.execute()
+
+        self.gitrepo.config.set("binstore", "path", self.path)
 
     def add_file(self, filename):
         digest = utils.md5_file(filename)
@@ -88,27 +112,41 @@ class FilesystemBinstore(Binstore):
         return False
 
 
+class UnknownCommandException(Exception):
+    pass
+
+
 class GitBin(object):
 
-    def __init__(self, binstore):
+    def __init__(self, gitrepo, binstore):
+        self.gitrepo = gitrepo
         self.binstore = binstore
 
-    def add(self, filenames):
-        # TODO: resolve globs, probably in the caller
-        """ Add a list of files, specified by their full paths, to the binstore. """
-        if not isinstance(filenames, list):
-            filenames = [filenames]
+    def dispatch_command(self, name, args):
+        if not hasattr(self, name):
+            raise UnknownCommandException("The command '%s' is not known to git-bin" % name)
+        getattr(self, name)(args.files)
 
+    def add(self, filenames):
+        """ Add a list of files, specified by their full paths, to the binstore. """
+        filenames = utils.expand_filenames(filenames)
+
+        print "GitBin.add(%s)" % filenames
         for filename in filenames:
+            print "\t%s" % filename
+
+            if not os.path.exists(filename):
+                continue
+
             # if the file is a link, but the target is not in the binstore (i.e.
             # this was a real symlink originally), we can just add it. This check
             # is before the check for dirs so that we don't traverse symlinked dirs.
             if os.path.islink(filename) and not self.binstore.has_file(os.readlink(filename)):
-                print "DO_GIT_ADD"
+                print "islink: DO_GIT_ADD"
                 continue
 
             if not utils.is_file_binary(filename):
-                print "DO_GIT_ADD"
+                self.gitrepo.add(filename)
                 continue
 
             if self.binstore.is_binstore_link(filename):
@@ -118,15 +156,17 @@ class GitBin(object):
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
             if os.path.isdir(filename):
+                print "\trecursing into %s" % filename
                 for root, dirs, files in os.walk(filename):
                     # first add all directories recursively
-                    self.add([os.path.join(root, dn) for dn in dirs])
+                    len(dirs) and self.add([os.path.join(root, dn) for dn in dirs])
                     # now add all the files
-                    self.add([os.path.join(root, fn) for fn in files])
-                return
+                    len(files) and self.add([os.path.join(root, fn) for fn in files])
+                continue
 
             # at this point, we're only dealing with a file, so let's add it to the binstore
             self.binstore.add_file(filename)
+
 
 
 def build_options_parser():
@@ -162,7 +202,11 @@ def build_options_parser():
 #       - this file should be committed
 # - detect online binstore available. if so, and was offline, suggest going online.
 def main(args):
-    binstore = Binstore()
+    gitrepo = git.GitRepo(".")
+    binstore = FilesystemBinstore(gitrepo)
+    gitbin = GitBin(gitrepo, binstore)
+    gitbin.dispatch_command(args.command, args)
+
 
 if __name__ == '__main__':
     args = build_options_parser().parse_args()

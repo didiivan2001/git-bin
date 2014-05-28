@@ -1,5 +1,6 @@
 import platform
 import sh
+import os.path
 
 
 def is_file_binary(filename):
@@ -18,3 +19,20 @@ elif platform.system() == "Linux":
     def md5_file(filename):
         res = sh.md5sum(filename, tag=True)
         return res.rsplit("=")[1].strip()
+
+
+def expand_filenames(filenames):
+    """ expands the filenames, resolving environment variables, ~ and globs """
+    res = []
+
+    for filename in filenames:
+        filename = os.path.expandvars(os.path.expanduser(filename))
+        if any((c in filename) for c in "?*["):
+            res += sh.glob(filename)
+        else:
+            res += [filename]
+    return res
+
+def are_same_filesystem(file1, file2):
+    """ Test if the files are on the same file-system. """
+    return os.stat(file1).st_dev == os.stat(file2).st_dev

@@ -131,6 +131,15 @@ class ChmodCommand(UndoableCommand):
         os.chmod(self.filename, self.previous_modes)
 
 
+class MakeDirectoryCommand(Command):
+
+    def __init__(self, dirname, modes=0777):
+        self.dirname, self.modes = dirname, modes
+
+    def _execute(self):
+        if not os.path.exists(self.dirname):
+            os.makedirs(self.dirname, self.modes)
+
 class GitAddCommand(UndoableCommand):
 
     def __init__(self, gitrepo, filename):
