@@ -8,9 +8,11 @@ class Command(object):
     def __init__(self):
         pass
 
-    def execute(self, *args, **kwargs):
-        raise NotImplemented()
+    def execute(self):
+        self._execute()
 
+    def _execute(self):
+        raise NotImplemented
 
 class UndoableCommand(Command):
 
@@ -29,19 +31,41 @@ class UndoableCommand(Command):
         raise NotImplemented()
 
     def undo(self):
-        raise NotImplemented()
+        raise NotImplemented
+
+    def cleanup(self):
+        raise NotImplemented
 
 
-class CompoundCommand(Command):
+class CompoundCommand(UndoableCommand):
     # TODO: this should really be an UndoableCommand
     # TODO: keep track of which commands completed successfully so that we can undo them if needs be
 
     def __init__(self, *args):
         self.commands = args
+        self.executed_commands = []
 
-    def execute(self):
+    def _execute(self):
         for cmd in self.commands:
+            print cmd
             cmd.execute()
+            self.executed_commands.append(cmd)
+        self.cleanup()
+
+    def undo(self):
+        print "undo: %s" % self.executed_commands
+        while len(self.executed_commands):
+            cmd = self.executed_commands.pop()
+            if not isinstance(cmd, UndoableCommand):
+                continue
+            print "undoing %s" % cmd
+            cmd.undo()
+
+    def cleanup(self):
+        while len(self.executed_commands):
+            cmd = self.executed_commands.pop()
+            print "cleaning up %s" % cmd
+            cmd.cleanup()
 
     def push(self, command):
         self.commands.append(command)
@@ -60,7 +84,8 @@ class CopyFileCommand(Command):
             raise NotAFileException()
 
     def _execute(self):
-        shutil.copy(self.src, self.dest)
+        print "CopyFileCommand(%s, %s)" % (self.src, self.dest)
+        shutil.copy2(self.src, self.dest)
 
 
 class MoveFileCommand(UndoableCommand):
@@ -72,6 +97,7 @@ class MoveFileCommand(UndoableCommand):
             raise NotAFileException()
 
     def _execute(self):
+        print "MoveFileCommand(%s, %s)" % (self.src, self.dest)
         # TODO: check for existance of dest and maybe abort? As it is, this
         # will automatically overwrite.
         shutil.move(self.src, self.dest)
@@ -91,18 +117,20 @@ class SafeMoveFileCommand(MoveFileCommand):
             self.backupfile_dir = backupfile_dir
 
     def _execute(self):
-        backup_filename = os.path.join(self.backupfile_dir, "._tmp_." + os.path.basename(self.src))
+        self.backup_filename = os.path.join(self.backupfile_dir, "._tmp_." + os.path.basename(self.src))
         # keep a copy of the files locally
-        self.copy_cmd = CopyFileCommand(self.src, backup_filename)
+        self.copy_cmd = CopyFileCommand(self.src, self.backup_filename)
         self.copy_cmd.execute()
         # move the file
         MoveFileCommand._execute(self)
-        # remove the local copy
-        os.remove(backup_filename)
 
     def undo(self):
-        backup_filename = os.path.join(self.backupfile_dir, "._tmp_." + os.path.basename(self.src))
-        shutil.move(backup_filename, self.src)
+        shutil.move(self.backup_filename, self.src)
+        os.remove(self.dest)
+
+    def cleanup(self):
+        # remove the local copy
+        os.remove(self.backup_filename)
 
 
 class LinkToFileCommand(Command):
@@ -120,9 +148,12 @@ class ChmodCommand(UndoableCommand):
     def __init__(self, modes, filename):
         self.modes = modes
         self.filename = filename
+        self.previous_modes = 0
 
     def _execute(self):
-        self.previous_modes = os.stat(self.filename).S_IMODE
+        print "ChmodCommand(%s, %o)" % (self.filename, self.modes)
+        self.previous_modes = os.stat(self.filename).st_mode
+        print "previous: %o" % self.previous_modes
         os.chmod(self.filename, self.modes)
 
     def undo(self):
@@ -137,6 +168,7 @@ class MakeDirectoryCommand(Command):
         self.dirname, self.modes = dirname, modes
 
     def _execute(self):
+        print "MakeDirectory(%s, %o)" % (self.dirname, self.modes)
         if not os.path.exists(self.dirname):
             os.makedirs(self.dirname, self.modes)
 

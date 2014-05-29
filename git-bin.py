@@ -54,22 +54,14 @@ class FilesystemBinstore(Binstore):
             self.init()
 
     def init(self):
-        # TODO: create the ${binstore_base}/${repo} directory
-        # TODO: create the .git/binstore symlink
-        # TODO: set the settings in .git/config [binstore]
-        # TODO: set self.path
         binstore_base = self.gitrepo.config.get("git-bin", "binstorebase", None)
         if not binstore_base:
             raise Exception("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
         self.path = os.path.join(binstore_base, self.gitrepo.reponame)
-        print self.path
-        print self.localpath
 
         commands = cmd.CompoundCommand(
-            [
-                cmd.MakeDirectoryCommand(self.path),
-                cmd.LinkToFileCommand(self.localpath, self.path),
-            ]
+            cmd.MakeDirectoryCommand(self.path),
+            cmd.LinkToFileCommand(self.localpath, self.path),
         )
         commands.execute()
 
@@ -80,12 +72,10 @@ class FilesystemBinstore(Binstore):
         binstore_filename = os.path.join(self.path, digest)
 
         commands = cmd.CompoundCommand(
-            [
-                cmd.SafeMoveFileCommand(filename, binstore_filename),
-                cmd.LinkToFileCommand(filename, binstore_filename),
-                cmd.ChmodCommand(stat.S_IRUSR, stat.S_IRGRP, stat.S_IROTH, binstore_filename),
-                cmd.GitAddCommand(self.gitrepo, filename),
-            ]
+            cmd.SafeMoveFileCommand(filename, binstore_filename),
+            cmd.LinkToFileCommand(filename, binstore_filename),
+            cmd.ChmodCommand(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH, binstore_filename),
+            cmd.GitAddCommand(self.gitrepo, filename),
         )
 
         commands.execute()
@@ -94,9 +84,7 @@ class FilesystemBinstore(Binstore):
         binstore_filename = os.readlink(filename)
 
         commands = cmd.CompoundCommand(
-            [
-                cmd.SafeMoveFileCommand(binstore_filename, filename, os.path.dirname(filename)),
-            ]
+            cmd.SafeMoveFileCommand(binstore_filename, filename, os.path.dirname(filename)),
         )
 
         commands.execute()
@@ -136,6 +124,7 @@ class GitBin(object):
             print "\t%s" % filename
 
             if not os.path.exists(filename):
+                print "'%s' did not match any files" % filename
                 continue
 
             # if the file is a link, but the target is not in the binstore (i.e.
