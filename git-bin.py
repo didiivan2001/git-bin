@@ -69,7 +69,10 @@ class FilesystemBinstore(Binstore):
 
     def add_file(self, filename):
         digest = utils.md5_file(filename)
-        binstore_filename = os.path.join(self.path, digest)
+        binstore_filename = os.path.join(self.localpath, digest)
+
+        # TODO: test for md5 collisions
+        # TODO: make hash algorithm configurable
 
         commands = cmd.CompoundCommand(
             cmd.SafeMoveFileCommand(filename, binstore_filename),
@@ -156,6 +159,11 @@ class GitBin(object):
             # at this point, we're only dealing with a file, so let's add it to the binstore
             self.binstore.add_file(filename)
 
+    def reset(self, filenames):
+        """ Reset a list of files """
+        filenames = utils.expand_filenames(filenames)
+
+        print "GitBin.reset(%s)" % filenames
 
 
 def build_options_parser():
