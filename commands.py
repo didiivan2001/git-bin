@@ -14,6 +14,10 @@ class Command(object):
     def _execute(self):
         raise NotImplemented
 
+    def __repr__(self):
+        return object.__repr__(self)
+
+
 class UndoableCommand(Command):
 
     def __init__(self):
@@ -34,7 +38,7 @@ class UndoableCommand(Command):
         raise NotImplemented
 
     def cleanup(self):
-        raise NotImplemented
+        pass
 
 
 class CompoundCommand(UndoableCommand):
@@ -59,11 +63,19 @@ class CompoundCommand(UndoableCommand):
             if not isinstance(cmd, UndoableCommand):
                 continue
             print "undoing %s" % cmd
-            cmd.undo()
+            try:
+                cmd.undo()
+            except Exception:
+                print "\nException while undoing %s" % cmd
+                import traceback
+                traceback.print_exc()
+                print "Continuing to undo other commands ...\n"
 
     def cleanup(self):
         while len(self.executed_commands):
             cmd = self.executed_commands.pop()
+            if not isinstance(cmd, UndoableCommand):
+                continue
             print "cleaning up %s" % cmd
             cmd.cleanup()
 
@@ -84,8 +96,10 @@ class CopyFileCommand(Command):
             raise NotAFileException()
 
     def _execute(self):
-        print "CopyFileCommand(%s, %s)" % (self.src, self.dest)
         shutil.copy2(self.src, self.dest)
+
+    def __repr__(self):
+        return "%s(%s, %s)" % (self.__class__.__name__, self.src, self.dest)
 
 
 class MoveFileCommand(UndoableCommand):
@@ -97,7 +111,6 @@ class MoveFileCommand(UndoableCommand):
             raise NotAFileException()
 
     def _execute(self):
-        print "MoveFileCommand(%s, %s)" % (self.src, self.dest)
         # TODO: check for existance of dest and maybe abort? As it is, this
         # will automatically overwrite.
         shutil.move(self.src, self.dest)
@@ -105,6 +118,9 @@ class MoveFileCommand(UndoableCommand):
     def undo(self):
         # TODO: perhaps check to see that the file was moved cleanly?
         shutil.move(self.dest, self.src)
+
+    def __repr__(self):
+        return "%s(%s, %s)" % (self.__class__.__name__, self.src, self.dest)
 
 
 class SafeMoveFileCommand(MoveFileCommand):
@@ -142,6 +158,9 @@ class LinkToFileCommand(Command):
     def _execute(self):
         os.symlink(self.targetname, self.linkname)
 
+    def __repr__(self):
+        return "%s(%s, %s)" % (self.__class__.__name__, self.targetname, self.linkname)
+
 
 class ChmodCommand(UndoableCommand):
 
@@ -151,15 +170,16 @@ class ChmodCommand(UndoableCommand):
         self.previous_modes = 0
 
     def _execute(self):
-        print "ChmodCommand(%s, %o)" % (self.filename, self.modes)
         self.previous_modes = os.stat(self.filename).st_mode
-        print "previous: %o" % self.previous_modes
         os.chmod(self.filename, self.modes)
 
     def undo(self):
         # TODO: it's conceivable that the modes were set and the user no longer
         # has permission to modify the modes. Not sure what to do in that case.
         os.chmod(self.filename, self.previous_modes)
+
+    def __repr__(self):
+        return "%s(%s, %o)" % (self.__class__.__name__, self.filename, self.modes)
 
 
 class MakeDirectoryCommand(Command):
@@ -168,9 +188,12 @@ class MakeDirectoryCommand(Command):
         self.dirname, self.modes = dirname, modes
 
     def _execute(self):
-        print "MakeDirectory(%s, %o)" % (self.dirname, self.modes)
         if not os.path.exists(self.dirname):
             os.makedirs(self.dirname, self.modes)
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, self.dirname)
+
 
 class GitAddCommand(UndoableCommand):
 
@@ -179,7 +202,10 @@ class GitAddCommand(UndoableCommand):
         self.filename = filename
 
     def _execute(self):
-        self.gitrepo.index.add(self.filename)
+        self.gitrepo.add(self.filename)
 
     def undo(self):
-        self.gitrepo.index.remove(self.filename)
+        self.gitrepo.unstage(self.filename)
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, self.filename)
