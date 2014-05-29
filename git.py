@@ -137,6 +137,7 @@ class GitRepo(object):
                 os.path.expanduser(find_repo_root(path))
             )
         )
+        self.shgit = sh.git.bake("--git-dir", os.path.join(self.path, ".git"))
         self.config = GitCommandConfig(self)
         remote_origin = self.config.get("remote.origin", "url", None)
         if remote_origin and ":" in remote_origin:
@@ -145,8 +146,8 @@ class GitRepo(object):
             self.reponame = os.path.basename(self.path)
 
     def status(self, filename):
-        res = sh.git.status(filename, porcelain=True)
-        marker = res.strip().split(" ")[0]
+        res = self.shgit.status(filename, porcelain=True)
+        marker = res.strip()[:2]
         if marker == "??":
             return STATUS_UNTRACKED
         elif marker[0] == " ":
@@ -163,7 +164,7 @@ class GitRepo(object):
         raise UnknownGitStatusException
 
     def add(self, filename):
-        res = sh.git.add(filename)
+        res = self.shgit.add(filename)
         if res.exit_code:
             raise GitOperationException
 
@@ -172,7 +173,7 @@ class GitRepo(object):
         if not nocheck and status & STATUS_STAGED_MASK != STATUS_STAGED:
             # nothing to do.
             return
-        res = sh.git.reset("HEAD", filename)
+        res = self.shgit.reset(filename)
         if res.exit_code:
             raise GitOperationException
 
