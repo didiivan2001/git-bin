@@ -143,7 +143,7 @@ class GitBin(object):
 
             if self.binstore.is_binstore_link(filename):
                 # the file is already a symlink into the binstore. Nothing to do!
-                return
+                continue
 
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
@@ -159,18 +159,105 @@ class GitBin(object):
             # at this point, we're only dealing with a file, so let's add it to the binstore
             self.binstore.add_file(filename)
 
+    # normal git reset works like this:
+    #   1. if the file is staged, it is unstaged. The file itself is untouched.
+    #   2. if the file is unstaged, nothing happens.
+    # To revert local changes in a modified file, you need to perform a `checkout --`.
+    #   1. if the file is staged, nothing happens.
+    #   2. if the file is tracked and unstaged, it's contents are reset to the value at head.
+    #   3. if the file is untracked, an error occurs.
+    # (see: http://git-scm.com/book/en/Git-Basics-Undoing-Things)
+    #
+    # legacy git-bin implemented the following logic:
+    #   1. if the file is not binary (note that staged/unstaged is not differentiated):
+    #   1.1 if the file is added, a `git reset HEAD` is performed.
+    #   1.2 if the file is modified, a `git checkout --` is performed.
+    #   2. if the file is a binary file:
+    #   2.1 if the file is added, the file is copied back from the binstore and a `git reset HEAD` is performed.
+    #   2.2 if the file is modified
+    #   2.2.1 and its hash is in the binstore: a `git checkout --` is performed.
+    #   2.2.1 but its hash is not in the binstore and there is a typechange, a copy of the file is saved in /tmp and then the `git checkout --` is performed.
+    #
+    # essentially we need two distinct operations:
+    #   - unstage: just get it out of the index, but don't touch the file itself.o
+    #           For a binary file that has just been git-bin-add-ed, but was not previously tracked, we will want to revert to the original file contents. This more closely resembles the intention of the regular unstage operation.
+    #   - restore: change back to the contents at HEAD.
+    #           For a binstore file this would mean switching back to the symlink. If there was actually a modification, we also want to save a 'just-in-case' file.
+    # if we use the standard git nomenclature:
+    #   - unstage -> reset
+    #   - restore -> checkout --
+    # let's implement these operations separately. We might implement a compatibility mode.
+
     def reset(self, filenames):
-        """ Reset a list of files """
+        """ Unstage a list of files """
         filenames = utils.expand_filenames(filenames)
 
         print "GitBin.reset(%s)" % filenames
+        for filename in filenames:
+            status = self.gitrepo.status(filename)
+            if not status & git.STATUS_STAGED_MASK == git.STATUS_STAGED:
+                # not staged, skip it.
+                print "you probably meant to do: git bin checkout -- %s" % filename
+                continue
 
+            # unstage the file:
+            self.gitrepo.unstage(filename)
+
+            # key: F=real file; S=symlink; T=typechange; M=modified; s=staged
+            # {1} ([F] -> GBAdded[Ss]) -> Untracked[S]
+            # {2} ([S] -> GBEdit[TF] -> Modified[TF] -> GBAdded[MSs]) -> Modified[MS]
+            new_status = self.gitrepo.status(filename)
+
+            if self.binstore.has(filename) and (
+                    new_status & git.STATUS_UNTRACKED or
+                    new_status & git.STATUS_MODIFIED):
+
+                # TODO: in case {1} it's possible that we might be leaving an orphan
+                # unreferenced file in the binstore. We might want to deal with this.
+                commands = cmd.CompoundCommand(
+                    cmd.CopyFileCommand(self.binstore.get_binstore_filename(filename), filename),
+                )
+                commands.execute()
+
+
+    def checkout_dashdash(self, filenames):
+        """ Revert local modifications to a list of files """
+        filenames = utils.expand_filenames(filenames)
+
+        print "GitBin.checkout_dashdash(%s)" % filenames
+        for filename in filenames:
+            status = self.gitrepo.status(filename)
+            if status & git.STATUS_STAGED_MASK == git.STATUS_STAGED:
+                # staged, skip it.
+                print "you probably meant to do: git bin reset %s" % filename
+                continue
+
+            if not status & git.STATUS_CHANGED_MASK:
+                # the file hasn't changed, skip it.
+                continue
+
+            # The first two cases can just be passed through to regular git
+            # checkout --.
+            # {1} (GBAdded[MSs] -> Reset[MS])
+            # {2} (GBEdit[TF])
+            # In the third case, there is some local modification that we should
+            # save 'just in case' first.
+            # {3} (GBEdit[TF] -> Modified[TF]) (*)
+
+            if status & git.STATUS_TYPECHANGED and not self.binstore.has(filename):
+                justincase_filename = os.path.join("/tmp", "%s.%s.justincase" % (filename, self.binstore.digest(filename)))
+                commands = cmd.CompoundCommand(
+                    cmd.CopyFileCommand(self.binstore.get_binstore_filename(filename), justincase_filename)
+                )
+                commands.execute()
+
+            self.gitrepo.restore(filename)
 
 def build_options_parser():
     parser = argparse.ArgumentParser(description='git bin')
     parser.add_argument(
         'command',
-        choices=["add", "edit", "reset"],
+        choices=["add", "edit", "reset", "checkout_dashdash"],
         help='the command to perform')
     parser.add_argument(
         '-v', '--verbose',

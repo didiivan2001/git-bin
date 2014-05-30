@@ -209,3 +209,35 @@ class GitAddCommand(UndoableCommand):
 
     def __repr__(self):
         return "%s(%s)" % (self.__class__.__name__, self.filename)
+
+class GitUnstageCommand(UndoableCommand):
+
+    def __init__(self, gitrepo, filename):
+        self.gitrepo = gitrepo
+        self.filename = filename
+
+    def _execute(self):
+        self.gitrepo.unstage(self.filename)
+
+    def undo(self):
+        self.gitrepo.add(self.filename)
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, self.filename)
+
+class GitRetoreCommand(UndoableCommand):
+
+    def __init__(self, gitrepo, filename, justincase_filename):
+        self.gitrepo = gitrepo
+        self.filename = filename
+        self.justincase_filename = justincase_filename
+
+    def _execute(self):
+        self.gitrepo.restore(self.filename)
+
+    def undo(self):
+        MoveFileCommand(justincase_filename, filename).execute()
+
+    def __repr__(self):
+        return "%s(%s, %s)" % (self.__class__.__name__, self.filename,
+                           self.justincase_filename)
