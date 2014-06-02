@@ -47,10 +47,13 @@ class FilesystemBinstore(Binstore):
         Binstore.__init__(self)
         self.gitrepo = gitrepo
         # retrieve the binstore path from the .git/config
-        # TODO: what should we do if there is no path? It's a git-bin-init situation
+        # TODO: what should we do if there is no path? It's a git-bin-init
+        # situation
         self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
         self.path = self.gitrepo.config.get("binstore", "path", None)
         if not self.path:
+            # TODO: if the path is set in the config file but doesn't exist for
+            # some reason, do something appropriate.
             self.init()
 
     def init(self):
@@ -93,7 +96,8 @@ class FilesystemBinstore(Binstore):
         commands = cmd.CompoundCommand(
             cmd.SafeMoveFileCommand(filename, binstore_filename),
             cmd.LinkToFileCommand(filename, binstore_filename),
-            cmd.ChmodCommand(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH, binstore_filename),
+            cmd.ChmodCommand(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH,
+                             binstore_filename),
             cmd.GitAddCommand(self.gitrepo, filename),
         )
 
@@ -102,10 +106,12 @@ class FilesystemBinstore(Binstore):
     def edit_file(self, filename):
         print "edit_file(%s)" % filename
         print "binstore_filename: %s" % self.get_binstore_filename(filename)
-        temp_filename = os.path.join(os.path.dirname(filename), ".tmp_%s" % os.path.basename(filename))
+        temp_filename = os.path.join(os.path.dirname(filename),
+                                     ".tmp_%s" % os.path.basename(filename))
         print "temp_filename: %s" % temp_filename
         commands = cmd.CompoundCommand(
-            cmd.CopyFileCommand(self.get_binstore_filename(filename), temp_filename),
+            cmd.CopyFileCommand(self.get_binstore_filename(filename),
+                                temp_filename),
             cmd.SafeMoveFileCommand(temp_filename, filename),
         )
 
@@ -135,10 +141,11 @@ class GitBin(object):
         self.gitrepo = gitrepo
         self.binstore = binstore
 
-    def dispatch_command(self, name, args):
+    def dispatch_command(self, name, arguments):
         if not hasattr(self, name):
-            raise UnknownCommandException("The command '%s' is not known to git-bin" % name)
-        filenames = utils.expand_filenames(args.files)
+            raise UnknownCommandException(
+                "The command '%s' is not known to git-bin" % name)
+        filenames = utils.expand_filenames(arguments.files)
         getattr(self, name)(filenames)
 
     def add(self, filenames):
@@ -152,11 +159,13 @@ class GitBin(object):
                 continue
 
             # if the file is a link, but the target is not in the binstore (i.e.
-            # this was a real symlink originally), we can just add it. This check
-            # is before the check for dirs so that we don't traverse symlinked dirs.
+            # this was a real symlink originally), we can just add it. This
+            # check is before the check for dirs so that we don't traverse
+            # symlinked dirs.
             if os.path.islink(filename):
                 if not self.binstore.is_binstore_link(filename):
-                    # a symlink, but not into the binstore. Just add the link itself:
+                    # a symlink, but not into the binstore. Just add the link
+                    # itself:
                     self.gitrepo.add(filename)
                 # whether it's a binstore link or not, we can just continue
                 continue
@@ -176,37 +185,50 @@ class GitBin(object):
                     len(files) and self.add([os.path.join(root, fn) for fn in files])
                 continue
 
-            # at this point, we're only dealing with a file, so let's add it to the binstore
+            # at this point, we're only dealing with a file, so let's add it to
+            # the binstore
             self.binstore.add_file(filename)
 
     # normal git reset works like this:
     #   1. if the file is staged, it is unstaged. The file itself is untouched.
     #   2. if the file is unstaged, nothing happens.
-    # To revert local changes in a modified file, you need to perform a `checkout --`.
+    # To revert local changes in a modified file, you need to perform a
+    # `checkout --`.
     #   1. if the file is staged, nothing happens.
-    #   2. if the file is tracked and unstaged, it's contents are reset to the value at head.
+    #   2. if the file is tracked and unstaged, it's contents are reset to the
+    # value at head.
     #   3. if the file is untracked, an error occurs.
     # (see: http://git-scm.com/book/en/Git-Basics-Undoing-Things)
     #
     # legacy git-bin implemented the following logic:
-    #   1. if the file is not binary (note that staged/unstaged is not differentiated):
+    #   1. if the file is not binary (note that staged/unstaged is not
+    # differentiated):
     #   1.1 if the file is added, a `git reset HEAD` is performed.
     #   1.2 if the file is modified, a `git checkout --` is performed.
     #   2. if the file is a binary file:
-    #   2.1 if the file is added, the file is copied back from the binstore and a `git reset HEAD` is performed.
+    #   2.1 if the file is added, the file is copied back from the binstore and
+    # a `git reset HEAD` is performed.
     #   2.2 if the file is modified
     #   2.2.1 and its hash is in the binstore: a `git checkout --` is performed.
-    #   2.2.1 but its hash is not in the binstore and there is a typechange, a copy of the file is saved in /tmp and then the `git checkout --` is performed.
+    #   2.2.1 but its hash is not in the binstore and there is a typechange, a
+    # copy of the file is saved in /tmp and then the `git checkout --` is
+    # performed.
     #
     # essentially we need two distinct operations:
-    #   - unstage: just get it out of the index, but don't touch the file itself.o
-    #           For a binary file that has just been git-bin-add-ed, but was not previously tracked, we will want to revert to the original file contents. This more closely resembles the intention of the regular unstage operation.
+    #   - unstage: just get it out of the index, but don't touch the file
+    # itself.o
+    #           For a binary file that has just been git-bin-add-ed, but was not
+    # previously tracked, we will want to revert to the original file contents.
+    # This more closely resembles the intention of the regular unstage operation
     #   - restore: change back to the contents at HEAD.
-    #           For a binstore file this would mean switching back to the symlink. If there was actually a modification, we also want to save a 'just-in-case' file.
+    #           For a binstore file this would mean switching back to the
+    # symlink. If there was actually a modification, we also want to save a
+    # 'just-in-case' file.
     # if we use the standard git nomenclature:
     #   - unstage -> reset
     #   - restore -> checkout --
-    # let's implement these operations separately. We might implement a compatibility mode.
+    # let's implement these operations separately. We might implement a
+    # compatibility mode.
 
     def reset(self, filenames):
         """ Unstage a list of files """
@@ -235,17 +257,21 @@ class GitBin(object):
 
             # key: F=real file; S=symlink; T=typechange; M=modified; s=staged
             # {1} ([F] -> GBAdded[Ss]) -> Untracked[S]
-            # {2} ([S] -> GBEdit[TF] -> Modified[TF] -> GBAdded[MSs]) -> Modified[MS]
+            # {2} ([S] -> GBEdit[TF] -> Modified[TF] -> GBAdded[MSs])
+            #      -> Modified[MS]
             new_status = self.gitrepo.status(filename)
 
             if self.binstore.has(filename) and (
                     new_status & git.STATUS_UNTRACKED or
                     new_status & git.STATUS_MODIFIED):
 
-                # TODO: in case {1} it's possible that we might be leaving an orphan
-                # unreferenced file in the binstore. We might want to deal with this.
+                # TODO: in case {1} it's possible that we might be leaving an
+                # orphan unreferenced file in the binstore. We might want to
+                # deal with this.
                 commands = cmd.CompoundCommand(
-                    cmd.CopyFileCommand(self.binstore.get_binstore_filename(filename), filename),
+                    cmd.CopyFileCommand(
+                        self.binstore.get_binstore_filename(filename),
+                        filename),
                 )
                 commands.execute()
 
@@ -284,9 +310,14 @@ class GitBin(object):
             # {3} (GBEdit[TF] -> Modified[TF]) (*)
 
             if status & git.STATUS_TYPECHANGED and not self.binstore.has(filename):
-                justincase_filename = os.path.join("/tmp", "%s.%s.justincase" % (filename, self.binstore.digest(filename)))
+                justincase_filename = os.path.join(
+                    "/tmp",
+                    "%s.%s.justincase" % (filename,
+                                          self.binstore.digest(filename)))
                 commands = cmd.CompoundCommand(
-                    cmd.CopyFileCommand(self.binstore.get_binstore_filename(filename), justincase_filename),
+                    cmd.CopyFileCommand(
+                        self.binstore.get_binstore_filename(filename),
+                        justincase_filename),
                 )
                 commands.execute()
 
