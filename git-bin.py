@@ -15,26 +15,26 @@ class Binstore(object):
 
     def init(self):
         """ Initialize git-bin for this git repository."""
-        raise NotImplemented
+        raise NotImplementedError
 
     def add_file(self, filename):
         """ Add the specified file to the binstore. """
-        raise NotImplemented
+        raise NotImplementedError
 
     def edit_file(self, filename):
         """ Retrieve the specified file for editing. """
-        raise NotImplemented
+        raise NotImplementedError
 
     def reset_file(self, filename):
         """ Reset the specified file. """
 
     def __contains__(self, item):
         """ Test whether a given item is in this binstore. The item may be a hash or a symlink in the repo """
-        raise NotImplemented
+        raise NotImplementedError
 
     def available(self):
         """ Test to see whether the binstore can be reached. """
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class SSHFSBinstore(Binstore):
@@ -389,6 +389,7 @@ def print_exception(prefix, exception, verbose=False):
     if verbose:
         import traceback
         traceback.print_exc()
+
 
 def main(args):
     try:
