@@ -67,9 +67,25 @@ class FilesystemBinstore(Binstore):
 
         self.gitrepo.config.set("binstore", "path", self.path)
 
-    def add_file(self, filename):
+    def get_binstore_filename(self, filename):
+        """ get the real filename of a given file in the binstore. """
+        # Note: this function assumes that the filename is in the binstore. You
+        # probably want to check that first.
+        if os.path.islink(filename):
+            return os.readlink(filename)
         digest = utils.md5_file(filename)
-        binstore_filename = os.path.join(self.localpath, digest)
+        return os.path.join(self.localpath, digest)
+
+    def has(self, filename):
+        """ check whether a particular file is in the binstore or not. """
+        if os.path.islink(filename):
+            link_target = os.readlink(filename)
+            if os.path.dirname(link_target) != self.localpath:
+                return False
+        return os.path.exists(self.get_binstore_filename(filename))
+
+    def add_file(self, filename):
+        binstore_filename = self.get_binstore_filename(filename)
 
         # TODO: test for md5 collisions
         # TODO: make hash algorithm configurable
@@ -84,10 +100,13 @@ class FilesystemBinstore(Binstore):
         commands.execute()
 
     def edit_file(self, filename):
-        binstore_filename = os.readlink(filename)
-
+        print "edit_file(%s)" % filename
+        print "binstore_filename: %s" % self.get_binstore_filename(filename)
+        temp_filename = os.path.join(os.path.dirname(filename), ".tmp_%s" % os.path.basename(filename))
+        print "temp_filename: %s" % temp_filename
         commands = cmd.CompoundCommand(
-            cmd.SafeMoveFileCommand(binstore_filename, filename, os.path.dirname(filename)),
+            cmd.CopyFileCommand(self.get_binstore_filename(filename), temp_filename),
+            cmd.SafeMoveFileCommand(temp_filename, filename),
         )
 
         commands.execute()
@@ -116,12 +135,11 @@ class GitBin(object):
     def dispatch_command(self, name, args):
         if not hasattr(self, name):
             raise UnknownCommandException("The command '%s' is not known to git-bin" % name)
-        getattr(self, name)(args.files)
+        filenames = utils.expand_filenames(args.files)
+        getattr(self, name)(filenames)
 
     def add(self, filenames):
         """ Add a list of files, specified by their full paths, to the binstore. """
-        filenames = utils.expand_filenames(filenames)
-
         print "GitBin.add(%s)" % filenames
         for filename in filenames:
             print "\t%s" % filename
@@ -190,10 +208,20 @@ class GitBin(object):
 
     def reset(self, filenames):
         """ Unstage a list of files """
-        filenames = utils.expand_filenames(filenames)
-
         print "GitBin.reset(%s)" % filenames
         for filename in filenames:
+
+            # if the filename is a directory, recurse into it.
+            # TODO: maybe make recursive directory crawls optional/configurable
+            if os.path.isdir(filename):
+                print "\trecursing into %s" % filename
+                for root, dirs, files in os.walk(filename):
+                    # first add all directories recursively
+                    len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
+                    # now add all the files
+                    len(files) and self.reset([os.path.join(root, fn) for fn in files])
+                continue
+
             status = self.gitrepo.status(filename)
             if not status & git.STATUS_STAGED_MASK == git.STATUS_STAGED:
                 # not staged, skip it.
@@ -219,13 +247,22 @@ class GitBin(object):
                 )
                 commands.execute()
 
-
     def checkout_dashdash(self, filenames):
         """ Revert local modifications to a list of files """
-        filenames = utils.expand_filenames(filenames)
-
         print "GitBin.checkout_dashdash(%s)" % filenames
         for filename in filenames:
+
+            # if the filename is a directory, recurse into it.
+            # TODO: maybe make recursive directory crawls optional/configurable
+            if os.path.isdir(filename):
+                print "\trecursing into %s" % filename
+                for root, dirs, files in os.walk(filename):
+                    # first add all directories recursively
+                    len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
+                    # now add all the files
+                    len(files) and self.reset([os.path.join(root, fn) for fn in files])
+                continue
+
             status = self.gitrepo.status(filename)
             if status & git.STATUS_STAGED_MASK == git.STATUS_STAGED:
                 # staged, skip it.
@@ -247,11 +284,31 @@ class GitBin(object):
             if status & git.STATUS_TYPECHANGED and not self.binstore.has(filename):
                 justincase_filename = os.path.join("/tmp", "%s.%s.justincase" % (filename, self.binstore.digest(filename)))
                 commands = cmd.CompoundCommand(
-                    cmd.CopyFileCommand(self.binstore.get_binstore_filename(filename), justincase_filename)
+                    cmd.CopyFileCommand(self.binstore.get_binstore_filename(filename), justincase_filename),
                 )
                 commands.execute()
 
             self.gitrepo.restore(filename)
+
+    def edit(self, filenames):
+        """ Retrieve file contents for editing """
+        print "GitBin.edit(%s)" % filenames
+        for filename in filenames:
+
+            # if the filename is a directory, recurse into it.
+            # TODO: maybe make recursive directory crawls optional/configurable
+            if os.path.isdir(filename):
+                print "\trecursing into %s" % filename
+                for root, dirs, files in os.walk(filename):
+                    # first add all directories recursively
+                    len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
+                    # now add all the files
+                    len(files) and self.reset([os.path.join(root, fn) for fn in files])
+                continue
+
+            if os.path.islink(filename) and self.binstore.has(filename):
+                self.binstore.edit_file(filename)
+
 
 def build_options_parser():
     parser = argparse.ArgumentParser(description='git bin')

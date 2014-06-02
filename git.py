@@ -146,8 +146,10 @@ class GitRepo(object):
             self.reponame = os.path.basename(self.path)
 
     def status(self, filename):
-        res = self.shgit.status(filename, porcelain=True)
-        marker = res.strip()[:2]
+        res = str(self.shgit.status(filename, porcelain=True))
+        marker = res[:2]
+        if not marker:
+            return 0
         if marker == "??":
             return STATUS_UNTRACKED
         elif marker[0] == " ":

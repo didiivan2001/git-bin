@@ -107,8 +107,6 @@ class MoveFileCommand(UndoableCommand):
     def __init__(self, src, dest):
         self.src = src
         self.dest = dest
-        if not os.path.isfile(src):
-            raise NotAFileException()
 
     def _execute(self):
         # TODO: check for existance of dest and maybe abort? As it is, this
@@ -210,6 +208,7 @@ class GitAddCommand(UndoableCommand):
     def __repr__(self):
         return "%s(%s)" % (self.__class__.__name__, self.filename)
 
+
 class GitUnstageCommand(UndoableCommand):
 
     def __init__(self, gitrepo, filename):
@@ -225,6 +224,7 @@ class GitUnstageCommand(UndoableCommand):
     def __repr__(self):
         return "%s(%s)" % (self.__class__.__name__, self.filename)
 
+
 class GitRetoreCommand(UndoableCommand):
 
     def __init__(self, gitrepo, filename, justincase_filename):
@@ -236,8 +236,8 @@ class GitRetoreCommand(UndoableCommand):
         self.gitrepo.restore(self.filename)
 
     def undo(self):
-        MoveFileCommand(justincase_filename, filename).execute()
+        MoveFileCommand(self.justincase_filename, self.filename).execute()
 
     def __repr__(self):
         return "%s(%s, %s)" % (self.__class__.__name__, self.filename,
-                           self.justincase_filename)
+                               self.justincase_filename)
