@@ -115,8 +115,11 @@ class FilesystemBinstore(Binstore):
         if not os.path.islink(filename):
             return False
 
-        if (os.readlink(filename).startswith(self.path) and
-                self.has_file(os.readlink(filename))):
+        print os.readlink(filename)
+        print self.localpath
+
+        if (os.readlink(filename).startswith(self.localpath) and
+                self.has(os.readlink(filename))):
                 return True
 
         return False
@@ -151,16 +154,15 @@ class GitBin(object):
             # if the file is a link, but the target is not in the binstore (i.e.
             # this was a real symlink originally), we can just add it. This check
             # is before the check for dirs so that we don't traverse symlinked dirs.
-            if os.path.islink(filename) and not self.binstore.has_file(os.readlink(filename)):
-                print "islink: DO_GIT_ADD"
+            if os.path.islink(filename):
+                if not self.binstore.is_binstore_link(filename):
+                    # a symlink, but not into the binstore. Just add the link itself:
+                    self.gitrepo.add(filename)
+                # whether it's a binstore link or not, we can just continue
                 continue
 
             if not utils.is_file_binary(filename):
                 self.gitrepo.add(filename)
-                continue
-
-            if self.binstore.is_binstore_link(filename):
-                # the file is already a symlink into the binstore. Nothing to do!
                 continue
 
             # if the filename is a directory, recurse into it.
