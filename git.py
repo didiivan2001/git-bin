@@ -4,21 +4,6 @@ from collections import OrderedDict
 import sh
 
 
-# TODO: this is a little naive. When inside a submodule for example, we'll find
-# the parent repo's root. Not sure what is the 'correct' behavior in this case.
-def find_repo_root(path):
-    if path.endswith(os.sep):
-        path = path[:-1]
-
-    while path not in ["", None, os.sep]:
-        if os.path.exists(os.path.join(path, ".git")):
-            break
-        path, null = os.path.split(path)
-    if path in ["", None, os.sep]:
-        return None
-    return path
-
-
 class NotARepoException(Exception):
     pass
 
@@ -121,23 +106,33 @@ status_map = {
 }
 
 
-class UnknownGitStatusException:
+class GitException(Exception):
     pass
 
 
-class GitOperationException:
+class UnknownGitStatusException(GitException):
+    pass
+
+
+class GitOperationException(GitException):
+    pass
+
+
+class NotInAGitRepoException(GitException):
     pass
 
 
 class GitRepo(object):
 
-    def __init__(self, path):
-        self.path = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(find_repo_root(path))
-            )
-        )
-        self.shgit = sh.git.bake("--git-dir", os.path.join(self.path, ".git"))
+    def __init__(self):
+        try:
+            self.path = str(sh.git("rev-parse", "--show-toplevel"))
+        except Exception:
+            raise NotInAGitRepoException(
+                "The current directory (%s) is not in a git repo." % os.getcwd())
+
+        self.gitdir = os.path.join(self.path, ".git")
+        self.shgit = sh.git.bake("--git-dir", self.gitdir)
         self.config = GitCommandConfig(self)
         remote_origin = self.config.get("remote.origin", "url", None)
         if remote_origin and ":" in remote_origin:
@@ -205,6 +200,6 @@ class GitRepo(object):
 
 
 if __name__ == "__main__":
-    gr = GitRepo(".")
+    gr = GitRepo()
     gr.get_config().sections["binstore"]["test123"] = "test12345"
     gr.write_config()

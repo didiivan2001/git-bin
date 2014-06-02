@@ -41,6 +41,10 @@ class SSHFSBinstore(Binstore):
     pass
 
 
+class BinstoreException(Exception):
+    pass
+
+
 class FilesystemBinstore(Binstore):
 
     def __init__(self, gitrepo):
@@ -59,7 +63,7 @@ class FilesystemBinstore(Binstore):
     def init(self):
         binstore_base = self.gitrepo.config.get("git-bin", "binstorebase", None)
         if not binstore_base:
-            raise Exception("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
+            raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
         self.path = os.path.join(binstore_base, self.gitrepo.reponame)
 
         commands = cmd.CompoundCommand(
@@ -355,6 +359,11 @@ def build_options_parser():
         default=False,
         help='be verbose')
     parser.add_argument(
+        '-d', '--debug',
+        dest='debug', action='store_true',
+        default=False,
+        help='output debug info')
+    parser.add_argument(
         'files',
         type=str,
         nargs="+",
@@ -375,11 +384,24 @@ def build_options_parser():
 #       - if file doesn't exist, suggest creating it on first use
 #       - this file should be committed
 # - detect online binstore available. if so, and was offline, suggest going online.
+def print_exception(prefix, exception, verbose=False):
+    print "%s: %s" % (prefix, exception)
+    if verbose:
+        import traceback
+        traceback.print_exc()
+
 def main(args):
-    gitrepo = git.GitRepo(".")
-    binstore = FilesystemBinstore(gitrepo)
-    gitbin = GitBin(gitrepo, binstore)
-    gitbin.dispatch_command(args.command, args)
+    try:
+        gitrepo = git.GitRepo()
+        binstore = FilesystemBinstore(gitrepo)
+        gitbin = GitBin(gitrepo, binstore)
+        gitbin.dispatch_command(args.command, args)
+    except git.GitException, e:
+        print_exception("git", e, args.debug)
+        exit(1)
+    except BinstoreException, e:
+        print_exception("binstore", e, args.debug)
+        exit(1)
 
 
 if __name__ == '__main__':
