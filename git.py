@@ -179,6 +179,8 @@ class GitRepo(object):
         if res.exit_code:
             raise GitOperationException
 
+    reset = unstage
+
     def restore(self, filename):
         """ Restores a file to it's original value at HEAD."""
         status = self.status(filename)
@@ -193,11 +195,14 @@ class GitRepo(object):
         if res.exit_code:
             raise GitOperationException
 
+    checkout_dashdash = restore
+
     def get_config(self):
         return self.config
 
     def write_config(self):
         self.config.write()
+
 
 if __name__ == "__main__":
     gr = GitRepo(".")
