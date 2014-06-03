@@ -51,28 +51,30 @@ class FilesystemBinstore(Binstore):
         Binstore.__init__(self)
         self.gitrepo = gitrepo
         # retrieve the binstore path from the .git/config
-        # TODO: what should we do if there is no path? It's a git-bin-init
-        # situation
+
+        # first look for the binstore base in the git config tree.
+        binstore_base = self.gitrepo.config.get("git-bin", "binstorebase", None)
+        # if that fails, try the environment variable
+        binstore_base = binstore_base or os.environ.get("BINSTORE_BASE", binstore_base)
+        if not binstore_base:
+            raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
+        self.init(binstore_base)
+
+    def init(self, binstore_base):
         self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
         self.path = self.gitrepo.config.get("binstore", "path", None)
         if not self.path:
-            # TODO: if the path is set in the config file but doesn't exist for
-            # some reason, do something appropriate.
-            self.init()
+            self.path = os.path.join(binstore_base, self.gitrepo.reponame)
 
-    def init(self):
-        binstore_base = self.gitrepo.config.get("git-bin", "binstorebase", None)
-        if not binstore_base:
-            raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
-        self.path = os.path.join(binstore_base, self.gitrepo.reponame)
+            commands = cmd.CompoundCommand(
+                cmd.MakeDirectoryCommand(self.path),
+                cmd.LinkToFileCommand(self.localpath, self.path),
+            )
+            commands.execute()
 
-        commands = cmd.CompoundCommand(
-            cmd.MakeDirectoryCommand(self.path),
-            cmd.LinkToFileCommand(self.localpath, self.path),
-        )
-        commands.execute()
-
-        self.gitrepo.config.set("binstore", "path", self.path)
+            self.gitrepo.config.set("binstore", "path", self.path)
+        if not self.path.exists(self.path):
+            raise BinstoreException("A binstore.path is set (%s), but it doesn't exist. Weird." % self.path)
 
     def get_binstore_filename(self, filename):
         """ get the real filename of a given file in the binstore. """
@@ -133,6 +135,18 @@ class FilesystemBinstore(Binstore):
                 return True
 
         return False
+
+
+class CompatabilityFilesystemBinstore(FilesystemBinstore):
+
+    def __init__(self, gitrepo):
+        FilesystemBinstore.__init__(self, gitrepo)
+
+    def init(self, binstore_base):
+        self.path = os.path.join(binstore_base, self.gitrepo.reponame)
+        self.localpath = self.path
+        if not os.path.exists(self.path):
+            raise BinstoreException("In compatibility mode, but binstore doesn't exist. What exactly are you trying to pull?")
 
 
 class UnknownCommandException(Exception):
@@ -364,6 +378,11 @@ def build_options_parser():
         default=False,
         help='output debug info')
     parser.add_argument(
+        '-C', '--compat',
+        dest='compatibility', action='store_true',
+        default=False,
+        help='use compatibility mode for legacy gitbin symlink')
+    parser.add_argument(
         'files',
         type=str,
         nargs="+",
@@ -394,7 +413,10 @@ def print_exception(prefix, exception, verbose=False):
 def main(args):
     try:
         gitrepo = git.GitRepo()
-        binstore = FilesystemBinstore(gitrepo)
+        if args.compatibility:
+            binstore = CompatabilityFilesystemBinstore(gitrepo)
+        else:
+            binstore = FilesystemBinstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
         gitbin.dispatch_command(args.command, args)
     except git.GitException, e:
