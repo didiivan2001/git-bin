@@ -2,7 +2,7 @@ import os.path
 import os
 from collections import OrderedDict
 import sh
-
+import re
 
 class NotARepoException(Exception):
     pass
@@ -126,7 +126,7 @@ class GitRepo(object):
 
     def __init__(self):
         try:
-            self.path = str(sh.git("rev-parse", "--show-toplevel"))
+            self.path = str(sh.git("rev-parse", "--show-toplevel")).strip()
         except Exception:
             raise NotInAGitRepoException(
                 "The current directory (%s) is not in a git repo." % os.getcwd())
@@ -135,10 +135,15 @@ class GitRepo(object):
         self.shgit = sh.git.bake("--git-dir", self.gitdir)
         self.config = GitCommandConfig(self)
         remote_origin = self.config.get("remote.origin", "url", None)
-        if remote_origin and ":" in remote_origin:
-            self.reponame = remote_origin.strip().split(":")[1]
-        else:
+        if not remote_origin:
             self.reponame = os.path.basename(self.path)
+        else:
+            origin_pattern = re.compile(r'(\w+?://)(.*?)[:/](.*)')
+            origin_match = origin_pattern.match(remote_origin)
+            if origin_match:
+                self.reponame = origin_match.groups()[2]
+            else:
+                raise GitException('Failed to parse remote origin %s' % remote_origin)
 
     def status(self, filename):
         res = str(self.shgit.status(filename, porcelain=True))
