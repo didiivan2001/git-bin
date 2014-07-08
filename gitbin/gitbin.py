@@ -73,7 +73,7 @@ class FilesystemBinstore(Binstore):
             commands.execute()
 
             self.gitrepo.config.set("binstore", "path", self.path)
-        if not self.path.exists(self.path):
+        if not os.path.exists(self.path):
             raise BinstoreException("A binstore.path is set (%s), but it doesn't exist. Weird." % self.path)
 
     def get_binstore_filename(self, filename):
@@ -377,11 +377,11 @@ def build_options_parser():
         dest='debug', action='store_true',
         default=False,
         help='output debug info')
-    parser.add_argument(
-        '-C', '--compat',
-        dest='compatibility', action='store_true',
-        default=False,
-        help='use compatibility mode for legacy gitbin symlink')
+#    parser.add_argument(
+#        '-C', '--compat',
+#        dest='compatibility', action='store_true',
+#        default=False,
+#        help='use compatibility mode for legacy gitbin symlink')
     parser.add_argument(
         'files',
         type=str,
@@ -410,23 +410,39 @@ def print_exception(prefix, exception, verbose=False):
         traceback.print_exc()
 
 
-def main():
-    args = build_options_parser().parse_args()
+def get_binstore(repo):
+    binstore_base = repo.config.get("git-bin", "binstorebase", None)
+    binstore_base = binstore_base or os.environ.get("BINSTORE_BASE", binstore_base)
+    if not binstore_base:
+        raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
+    localpath = os.path.join(repo.path, ".git", "binstore")
+
+    binstore_full_path = os.path.join(binstore_base, repo.reponame)
+
+    # if the project exists in the binstore but we don't have link in
+    # .git/binstore then we should use CompatabilityFilesystemBinstore
+    if os.path.exists(binstore_full_path) and not os.path.exists(localpath):
+        return CompatabilityFilesystemBinstore(repo)
+    else:
+        return FilesystemBinstore(repo)
+
+
+def main(args):
     try:
         gitrepo = git.GitRepo()
-        if args.compatibility:
-            binstore = CompatabilityFilesystemBinstore(gitrepo)
-        else:
-            binstore = FilesystemBinstore(gitrepo)
+
+        binstore = get_binstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
         gitbin.dispatch_command(args.command, args)
     except git.GitException, e:
         print_exception("git", e, args.debug)
-        return 1
+        exit(1)
     except BinstoreException, e:
         print_exception("binstore", e, args.debug)
-        return 1
+        exit(1)
 
 
 if __name__ == '__main__':
-    main()
+    args = build_options_parser().parse_args()
+    if args:
+        main(args)
