@@ -410,7 +410,8 @@ def print_exception(prefix, exception, verbose=False):
         traceback.print_exc()
 
 
-def main(args):
+def main():
+    args = build_options_parser().parse_args()
     try:
         gitrepo = git.GitRepo()
         if args.compatibility:
@@ -421,13 +422,11 @@ def main(args):
         gitbin.dispatch_command(args.command, args)
     except git.GitException, e:
         print_exception("git", e, args.debug)
-        exit(1)
+        return 1
     except BinstoreException, e:
         print_exception("binstore", e, args.debug)
-        exit(1)
+        return 1
 
 
 if __name__ == '__main__':
-    args = build_options_parser().parse_args()
-    if args:
-        main(args)
+    main()
