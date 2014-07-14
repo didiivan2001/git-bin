@@ -427,7 +427,7 @@ def get_binstore(repo):
         return FilesystemBinstore(repo)
 
 
-def main(args):
+def _main(args):
     try:
         gitrepo = git.GitRepo()
 
@@ -442,7 +442,11 @@ def main(args):
         exit(1)
 
 
-if __name__ == '__main__':
+def main():
     args = build_options_parser().parse_args()
     if args:
-        main(args)
+        _main(args)
+
+
+if __name__ == '__main__':
+    main()
