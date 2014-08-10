@@ -62,6 +62,7 @@ class FilesystemBinstore(Binstore):
 
     def init(self, binstore_base):
         self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
+
         self.path = self.gitrepo.config.get("binstore", "path", None)
         if not self.path:
             self.path = os.path.join(binstore_base, self.gitrepo.reponame)
@@ -99,9 +100,12 @@ class FilesystemBinstore(Binstore):
         # TODO: test for md5 collisions
         # TODO: make hash algorithm configurable
 
+        # relative link is needed, here, so it points from the file directly to
+        # the .git directory
+        relative_link = os.path.relpath(binstore_filename, os.path.basename(filename))
         commands = cmd.CompoundCommand(
             cmd.SafeMoveFileCommand(filename, binstore_filename),
-            cmd.LinkToFileCommand(filename, binstore_filename),
+            cmd.LinkToFileCommand(filename, relative_link),
             cmd.ChmodCommand(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH,
                              binstore_filename),
             cmd.GitAddCommand(self.gitrepo, filename),

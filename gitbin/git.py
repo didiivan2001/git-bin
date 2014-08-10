@@ -138,10 +138,13 @@ class GitRepo(object):
         if not remote_origin:
             self.reponame = os.path.basename(self.path)
         else:
-            origin_pattern = re.compile(r'(\w+?://)(.*?)[:/](.*)')
+            origin_pattern = re.compile(r'(\w+?://)?(.*?)[:/](.*)')
             origin_match = origin_pattern.match(remote_origin)
             if origin_match:
-                self.reponame = origin_match.groups()[2]
+                reponame = origin_match.groups()[2]
+                if reponame.endswith('.git'):
+                    reponame = reponame[:reponame.rindex('.git')]
+                self.reponame = reponame
             else:
                 raise GitException('Failed to parse remote origin %s' % remote_origin)
 
