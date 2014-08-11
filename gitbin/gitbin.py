@@ -89,7 +89,8 @@ class FilesystemBinstore(Binstore):
     def has(self, filename):
         """ check whether a particular file is in the binstore or not. """
         if os.path.islink(filename):
-            link_target = os.readlink(filename)
+            # local path is absolute (in local computer), so we need absolute of the link as well
+            link_target = os.path.abspath(os.readlink(filename))
             if os.path.dirname(link_target) != self.localpath:
                 return False
         return os.path.exists(self.get_binstore_filename(filename))
