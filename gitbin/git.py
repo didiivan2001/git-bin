@@ -132,7 +132,7 @@ class GitRepo(object):
                 "The current directory (%s) is not in a git repo." % os.getcwd())
 
         self.gitdir = os.path.join(self.path, ".git")
-        self.shgit = sh.git.bake("--git-dir", self.gitdir)
+        self.shgit = sh.git  #.bake("--git-dir", self.gitdir)
         self.config = GitCommandConfig(self)
         remote_origin = self.config.get("remote.origin", "url", None)
         if not remote_origin:
@@ -187,7 +187,7 @@ class GitRepo(object):
     def restore(self, filename):
         """ Restores a file to it's original value at HEAD."""
         status = self.status(filename)
-        if not status & STATUS_CHANGED_MASK:
+        if not (status & STATUS_CHANGED_MASK):
             # the file hasn't changed. There's nothing to restore
             # TODO: should we be unstaging at this point???
             return

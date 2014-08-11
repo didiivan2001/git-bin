@@ -63,17 +63,16 @@ class FilesystemBinstore(Binstore):
     def init(self, binstore_base):
         self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
 
-        self.path = self.gitrepo.config.get("binstore", "path", None)
-        if not self.path:
-            self.path = os.path.join(binstore_base, self.gitrepo.reponame)
-
+        #self.path = self.gitrepo.config.get("binstore", "path", None)
+        self.path = os.path.join(binstore_base, self.gitrepo.reponame)
+        if not os.path.exists(self.localpath):
             commands = cmd.CompoundCommand(
                 cmd.MakeDirectoryCommand(self.path),
                 cmd.LinkToFileCommand(self.localpath, self.path),
             )
             commands.execute()
 
-            self.gitrepo.config.set("binstore", "path", self.path)
+            #self.gitrepo.config.set("binstore", "path", self.path)
         if not os.path.exists(self.path):
             raise BinstoreException("A binstore.path is set (%s), but it doesn't exist. Weird." % self.path)
 
@@ -82,16 +81,16 @@ class FilesystemBinstore(Binstore):
         # Note: this function assumes that the filename is in the binstore. You
         # probably want to check that first.
         if os.path.islink(filename):
-            return os.readlink(filename)
+            #return os.readlink(filename)
+            return os.path.realpath(filename)
         digest = utils.md5_file(filename)
         return os.path.join(self.localpath, digest)
 
     def has(self, filename):
         """ check whether a particular file is in the binstore or not. """
         if os.path.islink(filename):
-            # local path is absolute (in local computer), so we need absolute of the link as well
-            link_target = os.path.abspath(os.readlink(filename))
-            if os.path.dirname(link_target) != self.localpath:
+            link_target = os.path.realpath(filename)
+            if os.path.dirname(link_target) != os.path.realpath(self.localpath):
                 return False
         return os.path.exists(self.get_binstore_filename(filename))
 
@@ -212,6 +211,9 @@ class GitBin(object):
             # the binstore
             self.binstore.add_file(filename)
 
+    def init(self, args):
+        pass
+
     # normal git reset works like this:
     #   1. if the file is staged, it is unstaged. The file itself is untouched.
     #   2. if the file is unstaged, nothing happens.
@@ -263,9 +265,9 @@ class GitBin(object):
             if os.path.isdir(filename):
                 print "\trecursing into %s" % filename
                 for root, dirs, files in os.walk(filename):
-                    # first add all directories recursively
+                    # first reset all directories recursively
                     len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
-                    # now add all the files
+                    # now reset all the files
                     len(files) and self.reset([os.path.join(root, fn) for fn in files])
                 continue
 
@@ -308,19 +310,19 @@ class GitBin(object):
             if os.path.isdir(filename):
                 print "\trecursing into %s" % filename
                 for root, dirs, files in os.walk(filename):
-                    # first add all directories recursively
-                    len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
-                    # now add all the files
-                    len(files) and self.reset([os.path.join(root, fn) for fn in files])
+                    # first checkout_dashdash all directories recursively
+                    len(dirs) and self.checkout_dashdash([os.path.join(root, dn) for dn in dirs])
+                    # now checkout_dashdash all the files
+                    len(files) and self.checkout_dashdash([os.path.join(root, fn) for fn in files])
                 continue
 
             status = self.gitrepo.status(filename)
-            if status & git.STATUS_STAGED_MASK == git.STATUS_STAGED:
+            if (status & git.STATUS_STAGED_MASK) == git.STATUS_STAGED:
                 # staged, skip it.
                 print "you probably meant to do: git bin reset %s" % filename
                 continue
 
-            if not status & git.STATUS_CHANGED_MASK:
+            if not (status & git.STATUS_CHANGED_MASK):
                 # the file hasn't changed, skip it.
                 continue
 
@@ -332,7 +334,7 @@ class GitBin(object):
             # save 'just in case' first.
             # {3} (GBEdit[TF] -> Modified[TF]) (*)
 
-            if status & git.STATUS_TYPECHANGED and not self.binstore.has(filename):
+            if (status & git.STATUS_TYPECHANGED) and not self.binstore.has(filename):
                 justincase_filename = os.path.join(
                     "/tmp",
                     "%s.%s.justincase" % (filename,
@@ -356,10 +358,10 @@ class GitBin(object):
             if os.path.isdir(filename):
                 print "\trecursing into %s" % filename
                 for root, dirs, files in os.walk(filename):
-                    # first add all directories recursively
-                    len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
-                    # now add all the files
-                    len(files) and self.reset([os.path.join(root, fn) for fn in files])
+                    # first edit all directories recursively
+                    len(dirs) and self.edit([os.path.join(root, dn) for dn in dirs])
+                    # now edit all the files
+                    len(files) and self.edit([os.path.join(root, fn) for fn in files])
                 continue
 
             if os.path.islink(filename) and self.binstore.has(filename):
@@ -370,7 +372,7 @@ def build_options_parser():
     parser = argparse.ArgumentParser(description='git bin')
     parser.add_argument(
         'command',
-        choices=["add", "edit", "reset", "checkout_dashdash"],
+        choices=["add", "edit", "reset", "checkout_dashdash", "init"],
         help='the command to perform')
     parser.add_argument(
         '-v', '--verbose',
@@ -390,7 +392,7 @@ def build_options_parser():
     parser.add_argument(
         'files',
         type=str,
-        nargs="+",
+        nargs="*",
         metavar='FILE',
         help='the files on which to perform the command')
 
@@ -416,26 +418,25 @@ def print_exception(prefix, exception, verbose=False):
 
 
 def get_binstore(repo):
-    binstore_base = repo.config.get("git-bin", "binstorebase", None)
-    binstore_base = binstore_base or os.environ.get("BINSTORE_BASE", binstore_base)
-    if not binstore_base:
-        raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
-    localpath = os.path.join(repo.path, ".git", "binstore")
+    # binstore_base = repo.config.get("git-bin", "binstorebase", None)
+    # binstore_base = binstore_base or os.environ.get("BINSTORE_BASE", binstore_base)
+    # if not binstore_base:
+    #     raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
+    # localpath = os.path.join(repo.path, ".git", "binstore")
 
-    binstore_full_path = os.path.join(binstore_base, repo.reponame)
+    # binstore_full_path = os.path.join(binstore_base, repo.reponame)
 
     # if the project exists in the binstore but we don't have link in
     # .git/binstore then we should use CompatabilityFilesystemBinstore
-    if os.path.exists(binstore_full_path) and not os.path.exists(localpath):
-        return CompatabilityFilesystemBinstore(repo)
-    else:
-        return FilesystemBinstore(repo)
+    #if os.path.exists(binstore_full_path) and not os.path.exists(localpath):
+    #    return CompatabilityFilesystemBinstore(repo)
+    #else:
+    return FilesystemBinstore(repo)
 
 
 def _main(args):
     try:
         gitrepo = git.GitRepo()
-
         binstore = get_binstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
         gitbin.dispatch_command(args.command, args)
