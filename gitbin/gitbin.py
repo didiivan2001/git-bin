@@ -102,7 +102,7 @@ class FilesystemBinstore(Binstore):
 
         # relative link is needed, here, so it points from the file directly to
         # the .git directory
-        relative_link = os.path.relpath(binstore_filename, os.path.basename(filename))
+        relative_link = os.path.relpath(binstore_filename, os.path.dirname(filename))
         commands = cmd.CompoundCommand(
             cmd.SafeMoveFileCommand(filename, binstore_filename),
             cmd.LinkToFileCommand(filename, relative_link),
