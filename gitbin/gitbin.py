@@ -210,6 +210,11 @@ class GitBin(object):
                 self.gitrepo.add(filename)
                 continue
 
+            # TODO: maybe create an empty file with some marking
+            # now we just skip it
+            if utils.is_file_pipe(filename):
+                continue
+
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
             if os.path.isdir(filename):

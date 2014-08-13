@@ -1,13 +1,23 @@
 import sh
+import os
 import os.path
 import hashlib
+import stat
+
+
+def get_file_size(filename):
+    return os.stat(filename).st_size
 
 
 def is_file_binary(filename):
     res = sh.file(filename, L=True, mime=True)
-    if "charset=binary" in res or "charset=binary" in res:
+    if ("charset=binary" in res) and (get_file_size(filename) > 0):
         return True
     return False
+
+
+def is_file_pipe(filename):
+    return stat.S_ISFIFO(os.stat(filename).st_mode)
 
 
 def md5_file(filename):
