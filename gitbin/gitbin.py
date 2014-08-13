@@ -190,7 +190,8 @@ class GitBin(object):
         for filename in filenames:
             print "\t%s" % filename
 
-            if not os.path.exists(filename):
+            # we want to add broken symlinks as well
+            if not os.path.lexists(filename):
                 print "'%s' did not match any files" % filename
                 continue
 
