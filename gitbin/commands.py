@@ -131,7 +131,9 @@ class SafeMoveFileCommand(MoveFileCommand):
             self.backupfile_dir = backupfile_dir
 
     def _execute(self):
-        self.backup_filename = os.path.join(self.backupfile_dir, "._tmp_." + os.path.basename(self.src))
+        self.backup_filename = os.path.join(
+            self.backupfile_dir,
+            "._tmp_." + os.path.basename(self.src))
         # keep a copy of the files locally
         self.copy_cmd = CopyFileCommand(self.src, self.backup_filename)
         self.copy_cmd.execute()
@@ -147,7 +149,7 @@ class SafeMoveFileCommand(MoveFileCommand):
         os.remove(self.backup_filename)
 
 
-class LinkToFileCommand(Command):
+class LinkToFileCommand(UndoableCommand):
 
     def __init__(self, linkname, targetname):
         self.linkname = linkname
@@ -156,8 +158,21 @@ class LinkToFileCommand(Command):
     def _execute(self):
         os.symlink(self.targetname, self.linkname)
 
+    def undo(self):
+        os.remove(self.linkname)
+
     def __repr__(self):
         return "%s(%s, %s)" % (self.__class__.__name__, self.targetname, self.linkname)
+
+
+class SafeRemoveCommand(MoveFileCommand):
+
+    def __init__(self, filename):
+        dest = "._tmp_." + os.path.basename(filename)
+        super(SafeRemoveCommand, self).__init__(filename, dest)
+
+    def cleanup(self):
+        os.remove(self.dest)
 
 
 class ChmodCommand(UndoableCommand):

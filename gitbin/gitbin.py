@@ -2,6 +2,7 @@
 import os.path
 import argparse
 import stat
+import filecmp
 
 import utils
 import commands as cmd
@@ -105,11 +106,16 @@ class FilesystemBinstore(Binstore):
         #  create only a link if file already exists in binstore
         if os.path.exists(binstore_filename):
             print('WARNING: File with that hash already exists in binstore.')
-            print('         Creating a link to existing file')
-            commands = cmd.CompoundCommand(
-                cmd.LinkToFileCommand(filename, relative_link),
-                cmd.GitAddCommand(self.gitrepo, filename),
-            )
+            if filecmp.cmp(filename, binstore_filename):
+                print('         Creating a link to existing file')
+                commands = cmd.CompoundCommand(
+                    cmd.SafeRemoveCommand(filename)
+                    cmd.LinkToFileCommand(filename, relative_link),
+                    cmd.GitAddCommand(self.gitrepo, filename),
+                )
+            else:
+                raise ValueError('hash collision found between %s and %s',
+                                 filename, binstore_filename)
         else:
             commands = cmd.CompoundCommand(
                 cmd.SafeMoveFileCommand(filename, binstore_filename),
