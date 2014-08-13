@@ -84,7 +84,6 @@ class FilesystemBinstore(Binstore):
             #return os.readlink(filename)
             return os.path.realpath(filename)
         digest = utils.md5_file(filename)
-        print('os.path.join(self.localpath, digest) = %s' % os.path.join(self.localpath, digest))
         return os.path.join(self.localpath, digest)
 
     def has(self, filename):
@@ -98,25 +97,27 @@ class FilesystemBinstore(Binstore):
     def add_file(self, filename):
         binstore_filename = self.get_binstore_filename(filename)
 
-        # TODO: test for md5 collisions
-        if os.path.exists(binstore_filename):
-            print('File with that name already exists in binstore.')
-            print('You probably meant to do checkout_dashdash')
-            print('If not - you found a hash collision. Congrats!!')
-            return
-
         # TODO: make hash algorithm configurable
 
         # relative link is needed, here, so it points from the file directly to
         # the .git directory
         relative_link = os.path.relpath(binstore_filename, os.path.dirname(filename))
-        commands = cmd.CompoundCommand(
-            cmd.SafeMoveFileCommand(filename, binstore_filename),
-            cmd.LinkToFileCommand(filename, relative_link),
-            cmd.ChmodCommand(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH,
-                             binstore_filename),
-            cmd.GitAddCommand(self.gitrepo, filename),
-        )
+        #  create only a link if file already exists in binstore
+        if os.path.exists(binstore_filename):
+            print('WARNING: File with that hash already exists in binstore.')
+            print('         Creating a link to existing file')
+            commands = cmd.CompoundCommand(
+                cmd.LinkToFileCommand(filename, relative_link),
+                cmd.GitAddCommand(self.gitrepo, filename),
+            )
+        else:
+            commands = cmd.CompoundCommand(
+                cmd.SafeMoveFileCommand(filename, binstore_filename),
+                cmd.LinkToFileCommand(filename, relative_link),
+                cmd.ChmodCommand(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH,
+                                 binstore_filename),
+                cmd.GitAddCommand(self.gitrepo, filename),
+            )
 
         commands.execute()
 
