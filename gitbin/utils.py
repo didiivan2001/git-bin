@@ -1,4 +1,3 @@
-# import platform
 import sh
 import os.path
 import hashlib
@@ -16,21 +15,11 @@ def md5_file(filename):
     state = hashlib.md5()
     f = open(filename, 'rb')
     buff = f.read(chunk_size)
-    while buff != '':
+    while len(buff):
         state.update(buff)
         buff = f.read(chunk_size)
     f.close()
     return state.hexdigest()
-
-# if platform.system() == "Darwin":
-#     def md5_file(filename):
-#         res = sh.md5(filename)
-#         return res.rsplit("=")[1].strip()
-
-# elif platform.system() == "Linux":
-#     def md5_file(filename):
-#         res = sh.md5sum(filename, tag=True)
-#         return res.rsplit("=")[1].strip()
 
 
 def expand_filenames(filenames):
