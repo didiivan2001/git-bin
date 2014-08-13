@@ -109,7 +109,7 @@ class FilesystemBinstore(Binstore):
             if filecmp.cmp(filename, binstore_filename):
                 print('         Creating a link to existing file')
                 commands = cmd.CompoundCommand(
-                    cmd.SafeRemoveCommand(filename)
+                    cmd.SafeRemoveCommand(filename),
                     cmd.LinkToFileCommand(filename, relative_link),
                     cmd.GitAddCommand(self.gitrepo, filename),
                 )
