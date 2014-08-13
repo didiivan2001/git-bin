@@ -1,6 +1,7 @@
-import platform
+# import platform
 import sh
 import os.path
+import hashlib
 
 
 def is_file_binary(filename):
@@ -10,15 +11,26 @@ def is_file_binary(filename):
     return False
 
 
-if platform.system() == "Darwin":
-    def md5_file(filename):
-        res = sh.md5(filename)
-        return res.rsplit("=")[1].strip()
+def md5_file(filename):
+    chunk_size = 4096
+    state = hashlib.md5()
+    f = open(filename, 'rb')
+    buff = f.read(chunk_size)
+    while buff != '':
+        state.update(buff)
+        buff = f.read(chunk_size)
+    f.close()
+    return state.hexdigest()
 
-elif platform.system() == "Linux":
-    def md5_file(filename):
-        res = sh.md5sum(filename, tag=True)
-        return res.rsplit("=")[1].strip()
+# if platform.system() == "Darwin":
+#     def md5_file(filename):
+#         res = sh.md5(filename)
+#         return res.rsplit("=")[1].strip()
+
+# elif platform.system() == "Linux":
+#     def md5_file(filename):
+#         res = sh.md5sum(filename, tag=True)
+#         return res.rsplit("=")[1].strip()
 
 
 def expand_filenames(filenames):
@@ -32,6 +44,7 @@ def expand_filenames(filenames):
         else:
             res += [filename]
     return res
+
 
 def are_same_filesystem(file1, file2):
     """ Test if the files are on the same file-system. """

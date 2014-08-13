@@ -84,6 +84,7 @@ class FilesystemBinstore(Binstore):
             #return os.readlink(filename)
             return os.path.realpath(filename)
         digest = utils.md5_file(filename)
+        print('os.path.join(self.localpath, digest) = %s' % os.path.join(self.localpath, digest))
         return os.path.join(self.localpath, digest)
 
     def has(self, filename):
@@ -98,6 +99,12 @@ class FilesystemBinstore(Binstore):
         binstore_filename = self.get_binstore_filename(filename)
 
         # TODO: test for md5 collisions
+        if os.path.exists(binstore_filename):
+            print('File with that name already exists in binstore.')
+            print('You probably meant to do checkout_dashdash')
+            print('If not - you found a hash collision. Congrats!!')
+            return
+
         # TODO: make hash algorithm configurable
 
         # relative link is needed, here, so it points from the file directly to
