@@ -438,9 +438,10 @@ def _main(args):
         gitrepo = git.GitRepo()
         binstore = get_binstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
+        cmd = args['<command>']
         if args['init']:
             gitbin.dispatch_command('init', args)
-        elif cmd is None:
+        elif cmd is not None:
             gitbin.dispatch_command(cmd, args)
 
     except git.GitException, e:
