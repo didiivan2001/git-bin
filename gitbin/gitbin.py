@@ -2,12 +2,14 @@
 '''
 Usage:
     git-bin [-v] [--debug] <command> [--] <file>...
+    git-bin init
     git-bin (-h|--help|--version)
 
 Commands:
     add             store file in binstore and add it's link to the index
     edit            retrieve a file from the binstore for local edit
     checkout        restore the link to the last added version of the file
+    init
 
 Options:
     --help -h       print this help
@@ -436,8 +438,11 @@ def _main(args):
         gitrepo = git.GitRepo()
         binstore = get_binstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
-        cmd = args['<command>']
-        gitbin.dispatch_command(cmd, args)
+        if args['init']:
+            gitbin.dispatch_command('init', args)
+        elif cmd is None:
+            gitbin.dispatch_command(cmd, args)
+
     except git.GitException, e:
         print_exception("git", e, args['--debug'])
         print(__doc__)
