@@ -10,7 +10,7 @@ setup(
     url='https://git-sas.cisco.com/tools/gitbin.git',
     download_url='https://git-sas.cisco.com/tools/gitbin.git',
     packages=["gitbin"],
-    install_requires=['sh'],
+    install_requires=['sh', 'docopt'],
     entry_points={
         'console_scripts': [
             'git-bin = gitbin.gitbin:main'

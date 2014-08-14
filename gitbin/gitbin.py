@@ -1,8 +1,31 @@
 #!/usr/bin/env python
+'''
+Usage:
+    git-bin [-v] [--debug] <command> [--] <file>...
+    git-bin (-h|--help|--version)
+
+Commands:
+    add             store file in binstore and add it's link to the index
+    edit            retrieve a file from the binstore for local edit
+    checkout        restore the link to the last added version of the file
+
+Options:
+    --help -h       print this help
+    --version       print version and exit
+    --verbose -v    enable verbose printing
+    --debug         debug mode
+'''
+# '''
+# Usage:
+#     git-bin (add|edit|reset|checkout --) <file>...
+#     git-bin (-h|--help|--version)
+# '''
 import os.path
 import argparse
 import stat
 import filecmp
+import pkg_resources
+from docopt import docopt
 
 import utils
 import commands as cmd
@@ -181,7 +204,7 @@ class GitBin(object):
         if not hasattr(self, name):
             raise UnknownCommandException(
                 "The command '%s' is not known to git-bin" % name)
-        filenames = utils.expand_filenames(arguments.files)
+        filenames = utils.expand_filenames(arguments['<file>'])
         getattr(self, name)(filenames)
 
     def add(self, filenames):
@@ -320,9 +343,9 @@ class GitBin(object):
                 )
                 commands.execute()
 
-    def checkout_dashdash(self, filenames):
+    def checkout(self, filenames):
         """ Revert local modifications to a list of files """
-        print "GitBin.checkout_dashdash(%s)" % filenames
+        print "GitBin.checkout(%s)" % filenames
         for filename in filenames:
 
             # if the filename is a directory, recurse into it.
@@ -331,9 +354,9 @@ class GitBin(object):
                 print "\trecursing into %s" % filename
                 for root, dirs, files in os.walk(filename):
                     # first checkout_dashdash all directories recursively
-                    len(dirs) and self.checkout_dashdash([os.path.join(root, dn) for dn in dirs])
+                    len(dirs) and self.checkout([os.path.join(root, dn) for dn in dirs])
                     # now checkout_dashdash all the files
-                    len(files) and self.checkout_dashdash([os.path.join(root, fn) for fn in files])
+                    len(files) and self.checkout([os.path.join(root, fn) for fn in files])
                 continue
 
             status = self.gitrepo.status(filename)
@@ -387,38 +410,6 @@ class GitBin(object):
             if os.path.islink(filename) and self.binstore.has(filename):
                 self.binstore.edit_file(filename)
 
-
-def build_options_parser():
-    parser = argparse.ArgumentParser(description='git bin')
-    parser.add_argument(
-        'command',
-        choices=["add", "edit", "reset", "checkout_dashdash", "init"],
-        help='the command to perform')
-    parser.add_argument(
-        '-v', '--verbose',
-        dest='verbose', action='store_true',
-        default=False,
-        help='be verbose')
-    parser.add_argument(
-        '-d', '--debug',
-        dest='debug', action='store_true',
-        default=False,
-        help='output debug info')
-#    parser.add_argument(
-#        '-C', '--compat',
-#        dest='compatibility', action='store_true',
-#        default=False,
-#        help='use compatibility mode for legacy gitbin symlink')
-    parser.add_argument(
-        'files',
-        type=str,
-        nargs="*",
-        metavar='FILE',
-        help='the files on which to perform the command')
-
-    return parser
-
-
 # TODO:
 # - implement git operations
 # - impelement binstore
@@ -438,19 +429,6 @@ def print_exception(prefix, exception, verbose=False):
 
 
 def get_binstore(repo):
-    # binstore_base = repo.config.get("git-bin", "binstorebase", None)
-    # binstore_base = binstore_base or os.environ.get("BINSTORE_BASE", binstore_base)
-    # if not binstore_base:
-    #     raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
-    # localpath = os.path.join(repo.path, ".git", "binstore")
-
-    # binstore_full_path = os.path.join(binstore_base, repo.reponame)
-
-    # if the project exists in the binstore but we don't have link in
-    # .git/binstore then we should use CompatabilityFilesystemBinstore
-    #if os.path.exists(binstore_full_path) and not os.path.exists(localpath):
-    #    return CompatabilityFilesystemBinstore(repo)
-    #else:
     return FilesystemBinstore(repo)
 
 
@@ -459,17 +437,25 @@ def _main(args):
         gitrepo = git.GitRepo()
         binstore = get_binstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
-        gitbin.dispatch_command(args.command, args)
+        cmd = args['<command>']
+        gitbin.dispatch_command(cmd, args)
     except git.GitException, e:
-        print_exception("git", e, args.debug)
+        print_exception("git", e, args['--debug'])
+        print(__doc__)
         exit(1)
     except BinstoreException, e:
-        print_exception("binstore", e, args.debug)
+        print_exception("binstore", e, args['--debug'])
+        exit(1)
+    except UnknownCommandException, e:
+        print(__doc__)
         exit(1)
 
-
 def main():
-    args = build_options_parser().parse_args()
+    #args = build_options_parser().parse_args()
+    import sys
+    print sys.argv
+    version = pkg_resources.require("gitbin")[0].version
+    args = docopt(__doc__, version=version, options_first=True)
     if args:
         _main(args)
 
