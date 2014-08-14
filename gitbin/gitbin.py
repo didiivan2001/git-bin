@@ -21,7 +21,6 @@ Options:
 #     git-bin (-h|--help|--version)
 # '''
 import os.path
-import argparse
 import stat
 import filecmp
 import pkg_resources
@@ -453,7 +452,6 @@ def _main(args):
 def main():
     #args = build_options_parser().parse_args()
     import sys
-    print sys.argv
     version = pkg_resources.require("gitbin")[0].version
     args = docopt(__doc__, version=version, options_first=True)
     if args:
