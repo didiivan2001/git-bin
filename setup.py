@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='gitbin',
-    version='0.2.0',
+    version='0.3.0',
     description='git extension to support binary files',
     author='SAS team',
     author_email='stare-c-sas@cisco.com',
