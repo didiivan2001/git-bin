@@ -385,7 +385,8 @@ class GitBin(object):
                                           utils.md5_file(filename)))
                 commands = cmd.CompoundCommand(
                     cmd.CopyFileCommand(
-                        self.binstore.get_binstore_filename(filename),
+#                        self.binstore.get_binstore_filename(filename),
+                        filename,
                         justincase_filename),
                 )
                 commands.execute()
