@@ -382,7 +382,7 @@ class GitBin(object):
                 justincase_filename = os.path.join(
                     "/tmp",
                     "%s.%s.justincase" % (filename,
-                                          self.binstore.digest(filename)))
+                                          utils.md5_file(filename)))
                 commands = cmd.CompoundCommand(
                     cmd.CopyFileCommand(
                         self.binstore.get_binstore_filename(filename),
