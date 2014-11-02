@@ -97,17 +97,20 @@ class NotAFileException(BaseException):
 
 class CopyFileCommand(Command):
 
-    def __init__(self, src, dest):
+    def __init__(self, src, dest, noprogress=False):
         self.src = src
         self.dest = dest
+        self.noprogress = noprogress
         if not os.path.isfile(src):
             raise NotAFileException()
 
     def _execute(self):
         size = os.path.getsize(self.src)
-        if progressbar and size > PROGRESSBAR_MINIMUM_SIZE:
+        if not self.noprogress and progressbar and size > PROGRESSBAR_MINIMUM_SIZE:
             pb = progressbar.ProgressBar(widgets=[progressbar.Bar(),
-                                                  progressbar.Percentage()], maxval=size)
+                                                  progressbar.Percentage(),
+                                                  " | ",
+                                                  progressbar.ETA()], maxval=size)
             pb.start()
             copied_size = 0
             with open(self.src, 'rb') as src:
@@ -128,14 +131,37 @@ class CopyFileCommand(Command):
 
 class MoveFileCommand(UndoableCommand):
 
-    def __init__(self, src, dest):
+    def __init__(self, src, dest, noprogress=False):
         self.src = src
         self.dest = dest
+        self.noprogress = noprogress
 
     def _execute(self):
         # TODO: check for existance of dest and maybe abort? As it is, this
         # will automatically overwrite.
-        shutil.move(self.src, self.dest)
+        size = os.path.getsize(self.src)
+        if not self.noprogress and progressbar and size > PROGRESSBAR_MINIMUM_SIZE:
+            pb = progressbar.ProgressBar(widgets=[progressbar.Bar(),
+                                                  progressbar.Percentage(),
+                                                  " | ",
+                                                  progressbar.ETA()], maxval=size)
+            pb.start()
+            copied_size = 0
+            tmpdest = self.dest + ".tmp"
+            with open(self.src, 'rb') as src:
+                with open(tmpdest, 'wb') as dest:
+                    while copied_size < size:
+                        data = src.read(PROGRESSBAR_BLOCK_SIZE)
+                        dest.write(data)
+                        copied_size += len(data)
+                        pb.update(copied_size)
+            pb.finish()
+
+            shutil.copystat(self.src, tmpdest)
+            shutil.move(tmpdest, self.dest)
+            os.remove(self.src)
+        else:
+            shutil.move(self.src, self.dest)
 
     def undo(self):
         # TODO: perhaps check to see that the file was moved cleanly?
@@ -159,7 +185,7 @@ class SafeMoveFileCommand(MoveFileCommand):
             self.backupfile_dir,
             "._tmp_." + os.path.basename(self.src))
         # keep a copy of the files locally
-        self.copy_cmd = CopyFileCommand(self.src, self.backup_filename)
+        self.copy_cmd = CopyFileCommand(self.src, self.backup_filename, noprogress=True)
         self.copy_cmd.execute()
         # move the file
         MoveFileCommand._execute(self)
