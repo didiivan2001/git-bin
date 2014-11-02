@@ -2,6 +2,14 @@ import sys
 import os
 import shutil
 
+try:
+    import progressbar
+
+    PROGRESSBAR_MINIMUM_SIZE = 1024 * 1024 * 10
+    PROGRESSBAR_BLOCK_SIZE = 1024 * 16
+except ImportError:
+    progressbar = None
+
 
 class Command(object):
 
@@ -96,7 +104,23 @@ class CopyFileCommand(Command):
             raise NotAFileException()
 
     def _execute(self):
-        shutil.copy2(self.src, self.dest)
+        size = os.path.getsize(self.src)
+        if progressbar and size > PROGRESSBAR_MINIMUM_SIZE:
+            pb = progressbar.ProgressBar(widgets=[progressbar.Bar(),
+                                                  progressbar.Percentage()], maxval=size)
+            pb.start()
+            copied_size = 0
+            with open(self.src, 'rb') as src:
+                with open(self.dest, 'wb') as dest:
+                    while copied_size < size:
+                        data = src.read(PROGRESSBAR_BLOCK_SIZE)
+                        dest.write(data)
+                        copied_size += len(data)
+                        pb.update(copied_size)
+            pb.finish()
+        else:
+            shutil.copy(self.src, self.dest)
+        shutil.copystat(self.src, self.dest)
 
     def __repr__(self):
         return "%s(%s, %s)" % (self.__class__.__name__, self.src, self.dest)

@@ -455,6 +455,8 @@ def _main(args):
     except UnknownCommandException, e:
         print(__doc__)
         exit(1)
+    except KeyboardInterrupt:
+        exit(1)
 
 def main():
     #args = build_options_parser().parse_args()
