@@ -54,7 +54,8 @@ class Binstore(object):
         """ Reset the specified file. """
 
     def __contains__(self, item):
-        """ Test whether a given item is in this binstore. The item may be a hash or a symlink in the repo """
+        """ Test whether a given item is in this binstore. The item may be a hash or a
+        symlink in the repo """
         raise NotImplementedError
 
     def available(self):
@@ -88,7 +89,7 @@ class FilesystemBinstore(Binstore):
     def init(self, binstore_base):
         self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
 
-        #self.path = self.gitrepo.config.get("binstore", "path", None)
+        # self.path = self.gitrepo.config.get("binstore", "path", None)
         self.path = os.path.join(binstore_base, self.gitrepo.reponame)
         if not os.path.exists(self.localpath):
             commands = cmd.CompoundCommand(
@@ -97,7 +98,7 @@ class FilesystemBinstore(Binstore):
             )
             commands.execute()
 
-            #self.gitrepo.config.set("binstore", "path", self.path)
+            # self.gitrepo.config.set("binstore", "path", self.path)
         if not os.path.exists(self.path):
             raise BinstoreException("A binstore.path is set (%s), but it doesn't exist. Weird." % self.path)
 
@@ -106,7 +107,7 @@ class FilesystemBinstore(Binstore):
         # Note: this function assumes that the filename is in the binstore. You
         # probably want to check that first.
         if os.path.islink(filename):
-            #return os.readlink(filename)
+            # return os.readlink(filename)
             return os.path.realpath(filename)
         digest = utils.md5_file(filename)
         return os.path.join(self.localpath, digest)
@@ -161,6 +162,10 @@ class FilesystemBinstore(Binstore):
             cmd.CopyFileCommand(self.get_binstore_filename(filename),
                                 temp_filename),
             cmd.SafeMoveFileCommand(temp_filename, filename),
+            cmd.ChmodCommand(stat.S_IRUSR | stat.S_IWUSR |
+                             stat.S_IRGRP | stat.S_IWGRP |
+                             stat.S_IROTH | stat.S_IWOTH,
+                             filename),
         )
 
         commands.execute()
