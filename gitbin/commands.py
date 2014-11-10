@@ -34,7 +34,9 @@ class UndoableCommand(Command):
     def execute(self):
         try:
             return self._execute()
-        except Exception:
+        except Exception, e:
+            print "Exception occurred: %s" % e
+            print "Undoing..."
             self.undo()
             exc_info = sys.exc_info()
             raise exc_info[1], None, exc_info[2]
