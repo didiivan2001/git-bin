@@ -5,6 +5,14 @@ import hashlib
 import stat
 
 
+VERBOSE = False
+
+
+def printv(s):
+    if VERBOSE:
+        print s
+
+
 def get_file_size(filename):
     return os.stat(filename).st_size
 

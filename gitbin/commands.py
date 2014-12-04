@@ -1,6 +1,7 @@
 import sys
 import os
 import shutil
+from utils import printv
 
 try:
     import progressbar
@@ -53,7 +54,8 @@ class UndoableCommand(Command):
 
 class CompoundCommand(UndoableCommand):
     # TODO: this should really be an UndoableCommand
-    # TODO: keep track of which commands completed successfully so that we can undo them if needs be
+    # TODO: keep track of which commands completed successfully so that we can undo them
+    # if needs be
 
     def __init__(self, *args):
         self.commands = args
@@ -61,7 +63,7 @@ class CompoundCommand(UndoableCommand):
 
     def _execute(self):
         for cmd in self.commands:
-            print cmd
+            printv(cmd)
             cmd.execute()
             self.executed_commands.append(cmd)
         self.cleanup()
@@ -86,7 +88,7 @@ class CompoundCommand(UndoableCommand):
             cmd = self.executed_commands.pop()
             if not isinstance(cmd, UndoableCommand):
                 continue
-            print "cleaning up %s" % cmd
+            printv("cleaning up %s" % cmd)
             cmd.cleanup()
 
     def push(self, command):

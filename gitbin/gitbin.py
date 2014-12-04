@@ -153,11 +153,11 @@ class FilesystemBinstore(Binstore):
         commands.execute()
 
     def edit_file(self, filename):
-        print "edit_file(%s)" % filename
-        print "binstore_filename: %s" % self.get_binstore_filename(filename)
+        printv("edit_file(%s)" % filename)
+        printv("binstore_filename: %s" % self.get_binstore_filename(filename))
         temp_filename = os.path.join(os.path.dirname(filename),
                                      ".tmp_%s" % os.path.basename(filename))
-        print "temp_filename: %s" % temp_filename
+        printv("temp_filename: %s" % temp_filename)
         commands = cmd.CompoundCommand(
             cmd.CopyFileCommand(self.get_binstore_filename(filename),
                                 temp_filename),
@@ -174,8 +174,8 @@ class FilesystemBinstore(Binstore):
         if not os.path.islink(filename):
             return False
 
-        print os.readlink(filename)
-        print self.localpath
+        printv(os.readlink(filename))
+        printv(self.localpath)
 
         if (os.readlink(filename).startswith(self.localpath) and
                 self.has(os.readlink(filename))):
@@ -215,9 +215,9 @@ class GitBin(object):
 
     def add(self, filenames):
         """ Add a list of files, specified by their full paths, to the binstore. """
-        print "GitBin.add(%s)" % filenames
+        printv("GitBin.add(%s)" % filenames)
         for filename in filenames:
-            print "\t%s" % filename
+            printv("\t%s" % filename)
 
             # we want to add broken symlinks as well
             if not os.path.lexists(filename):
@@ -248,7 +248,7 @@ class GitBin(object):
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
             if os.path.isdir(filename):
-                print "\trecursing into %s" % filename
+                printv("\trecursing into %s" % filename)
                 for root, dirs, files in os.walk(filename):
                     # first add all directories recursively
                     len(dirs) and self.add([os.path.join(root, dn) for dn in dirs])
@@ -306,13 +306,13 @@ class GitBin(object):
 
     def reset(self, filenames):
         """ Unstage a list of files """
-        print "GitBin.reset(%s)" % filenames
+        printv("GitBin.reset(%s)" % filenames)
         for filename in filenames:
 
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
             if os.path.isdir(filename):
-                print "\trecursing into %s" % filename
+                printv("\trecursing into %s" % filename)
                 for root, dirs, files in os.walk(filename):
                     # first reset all directories recursively
                     len(dirs) and self.reset([os.path.join(root, dn) for dn in dirs])
@@ -351,13 +351,13 @@ class GitBin(object):
 
     def checkout(self, filenames):
         """ Revert local modifications to a list of files """
-        print "GitBin.checkout(%s)" % filenames
+        printv("GitBin.checkout(%s)" % filenames)
         for filename in filenames:
 
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
             if os.path.isdir(filename):
-                print "\trecursing into %s" % filename
+                printv("\trecursing into %s" % filename)
                 for root, dirs, files in os.walk(filename):
                     # first checkout_dashdash all directories recursively
                     len(dirs) and self.checkout([os.path.join(root, dn) for dn in dirs])
@@ -390,7 +390,7 @@ class GitBin(object):
                                           utils.md5_file(filename)))
                 commands = cmd.CompoundCommand(
                     cmd.CopyFileCommand(
-#                        self.binstore.get_binstore_filename(filename),
+                        self.binstore.get_binstore_filename(filename),
                         filename,
                         justincase_filename),
                 )
@@ -400,13 +400,13 @@ class GitBin(object):
 
     def edit(self, filenames):
         """ Retrieve file contents for editing """
-        print "GitBin.edit(%s)" % filenames
+        printv("GitBin.edit(%s)" % filenames)
         for filename in filenames:
 
             # if the filename is a directory, recurse into it.
             # TODO: maybe make recursive directory crawls optional/configurable
             if os.path.isdir(filename):
-                print "\trecursing into %s" % filename
+                printv("\trecursing into %s" % filename)
                 for root, dirs, files in os.walk(filename):
                     # first edit all directories recursively
                     len(dirs) and self.edit([os.path.join(root, dn) for dn in dirs])
@@ -416,6 +416,7 @@ class GitBin(object):
 
             if os.path.islink(filename) and self.binstore.has(filename):
                 self.binstore.edit_file(filename)
+
 
 # TODO:
 # - implement git operations
@@ -439,12 +440,19 @@ def get_binstore(repo):
     return FilesystemBinstore(repo)
 
 
+printv = utils.printv
+
+
 def _main(args):
     try:
         gitrepo = git.GitRepo()
         binstore = get_binstore(gitrepo)
         gitbin = GitBin(gitrepo, binstore)
         cmd = args['<command>']
+
+        if args['--verbose']:
+            utils.VERBOSE = True
+
         if args['init']:
             gitbin.dispatch_command('init', args)
         elif cmd is not None:
@@ -463,9 +471,8 @@ def _main(args):
     except KeyboardInterrupt:
         exit(1)
 
+
 def main():
-    #args = build_options_parser().parse_args()
-    import sys
     version = pkg_resources.require("gitbin")[0].version
     args = docopt(__doc__, version=version, options_first=True)
     if args:
