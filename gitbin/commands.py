@@ -175,8 +175,8 @@ class MoveFileCommand(UndoableCommand):
 
 class SafeMoveFileCommand(MoveFileCommand):
 
-    def __init__(self, src, dest, backupfile_dir=None):
-        MoveFileCommand.__init__(self, src, dest)
+    def __init__(self, src, dest, backupfile_dir=None, noprogress=False):
+        MoveFileCommand.__init__(self, src, dest, noprogress)
         if not backupfile_dir:
             self.backupfile_dir = os.path.dirname(self.src)
         else:

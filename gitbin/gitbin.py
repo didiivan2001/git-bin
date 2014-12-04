@@ -161,7 +161,7 @@ class FilesystemBinstore(Binstore):
         commands = cmd.CompoundCommand(
             cmd.CopyFileCommand(self.get_binstore_filename(filename),
                                 temp_filename),
-            cmd.SafeMoveFileCommand(temp_filename, filename),
+            cmd.SafeMoveFileCommand(temp_filename, filename, noprogress=True),
             cmd.ChmodCommand(stat.S_IRUSR | stat.S_IWUSR |
                              stat.S_IRGRP | stat.S_IWGRP |
                              stat.S_IROTH | stat.S_IWOTH,
