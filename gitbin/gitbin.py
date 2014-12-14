@@ -83,15 +83,21 @@ class FilesystemBinstore(Binstore):
         # if that fails, try the environment variable
         binstore_base = binstore_base or os.environ.get("BINSTORE_BASE", binstore_base)
         if not binstore_base:
-            raise BinstoreException("No git-bin.binstorebase is specified. You probably want to add this to your ~/.gitconfig")
+            raise BinstoreException(
+                "No git-bin.binstorebase is specified. You probably want to add this to" +
+                " your ~/.gitconfig")
         self.init(binstore_base)
 
     def init(self, binstore_base):
         self.localpath = os.path.join(self.gitrepo.path, ".git", "binstore")
-
-        # self.path = self.gitrepo.config.get("binstore", "path", None)
         self.path = os.path.join(binstore_base, self.gitrepo.reponame)
+
+        if not os.path.exists(binstore_base):
+            raise BinstoreException(
+                ("The binstore base (%s) is inaccessible. Did you forget to mount" +
+                 " something?") % binstore_base)
         if not os.path.exists(self.localpath):
+            print "creating"
             commands = cmd.CompoundCommand(
                 cmd.MakeDirectoryCommand(self.path),
                 cmd.LinkToFileCommand(self.localpath, self.path),
@@ -100,7 +106,8 @@ class FilesystemBinstore(Binstore):
 
             # self.gitrepo.config.set("binstore", "path", self.path)
         if not os.path.exists(self.path):
-            raise BinstoreException("A binstore.path is set (%s), but it doesn't exist. Weird." % self.path)
+            raise BinstoreException(
+                "A binstore.path is set (%s), but it doesn't exist. Weird." % self.path)
 
     def get_binstore_filename(self, filename):
         """ get the real filename of a given file in the binstore. """
@@ -193,7 +200,9 @@ class CompatabilityFilesystemBinstore(FilesystemBinstore):
         self.path = os.path.join(binstore_base, self.gitrepo.reponame)
         self.localpath = self.path
         if not os.path.exists(self.path):
-            raise BinstoreException("In compatibility mode, but binstore doesn't exist. What exactly are you trying to pull?")
+            raise BinstoreException(
+                "In compatibility mode, but binstore doesn't exist. What exactly are" +
+                " you trying to pull?")
 
 
 class UnknownCommandException(Exception):
