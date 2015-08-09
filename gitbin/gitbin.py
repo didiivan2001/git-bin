@@ -259,8 +259,6 @@ class GitBin(object):
             if os.path.isdir(filename):
                 printv("\trecursing into %s" % filename)
                 for root, dirs, files in os.walk(filename):
-                    # first add all directories recursively
-                    len(dirs) and self.add([os.path.join(root, dn) for dn in dirs])
                     # now add all the files
                     len(files) and self.add([os.path.join(root, fn) for fn in files])
                 continue
