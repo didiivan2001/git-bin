@@ -1,5 +1,0 @@
-NAME="git-bin"
-DESCRIPTION="git extension to handle binary files"
-
-INSTALL_PYS=""
-INSTALL_BINS="git-bin git-bin.sh"
