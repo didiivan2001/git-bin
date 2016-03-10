@@ -480,7 +480,7 @@ def _main(args):
 
 
 def main():
-    version = pkg_resources.require("gitbin")[0].version
+    version = pkg_resources.require("git-bin")[0].version
     args = docopt(__doc__, version=version, options_first=True)
     if args:
         _main(args)

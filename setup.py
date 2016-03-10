@@ -2,11 +2,13 @@ from setuptools import setup
 
 
 setup(
-    name='gitbin',
+    name='git-bin',
     version='0.3.0',
     description='git extension to support binary files',
     author='srubenst',
     author_email='srubenst@cisco.com',
+    license='MIT',
+    keywords='binary git',
     url='https://github.com/cisco-sas/git-bin',
     download_url='https://github.com/cisco-sas/git-bin',
     packages=["gitbin"],
