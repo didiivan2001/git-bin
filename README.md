@@ -19,8 +19,11 @@ git-bin has been tested and used extensively on Linux and OSX. Windows has not b
 tested, but probably won't work due to the reliance on symlinks.
 
 ### Installing git-bin
-At the moment, you can install git-bin by cloning the repo and running `python setup.py
-install`.
+You can install git-bin via pip by doing:
+
+```
+pip install git-bin
+```
 
 ### Specifying `binstore`
 The base `binstore` used by git-bin can be set either by adding a `binstorebase` key in a
