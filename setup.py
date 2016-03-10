@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='git-bin',
-    version='0.3.1',
+    version='0.3.2',
     description='git extension to support binary files',
     author='srubenst',
     author_email='srubenst@cisco.com',
