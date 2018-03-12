@@ -1,0 +1,67 @@
+#include<iostream>
+#include<fstream>
+int G;
+int n;
+float obiecte[100][3];
+float profit;
+
+int read_data()
+{
+fstream f;
+f.open("input.dat",ios::in);
+f>>G;
+f>>n;
+for(int i=1;i<=n;i++)
+  {
+   f>>obiecte[i][1];
+   f>>obiecte[i][2];
+  }
+}
+
+int sort_data()
+{
+    int j; int i; int aux;
+for(i=1;i<=n-1;i++)
+     for(j=i+1;j<=n;j++)
+          if(obiecte[i][3]<obiecte[j][3])
+
+              {aux=obiecte[i][3];
+               obiecte[i][3]=obiecte[j][3];
+               obiecte[j][3]=aux;
+               }
+}
+
+int init_data()
+{
+for(int i=1;i<=n;i=i+1)
+{
+   obiecte[i][3]=obiecte[i][1]/obiecte[i][2];}
+   sort_data();
+   profit=0;
+}
+
+int greedy()
+{
+ int i=1;
+ while((i<=n)&&(G>0))
+    {
+    if(G>=obiecte[i][2])
+        {
+            profit=profit+obiecte[i][1];
+            G=G-obiecte[i][1];
+        }
+    else
+        {
+                float x;
+                x=(G*100)/obiecte[i][1];
+                profit=profit+x;
+                G=0;
+        }
+            i++;
+    }
+}
+
+int main()
+{read_data();
+init_data();
+greedy();}
